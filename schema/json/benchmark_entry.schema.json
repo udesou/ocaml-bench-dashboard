@@ -1,0 +1,15 @@
+{
+  "title": "benchmark_entry",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "build_model": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "args": { "type": "array", "items": { "type": "string" } },
+    "path": { "type": "string" },
+    "suite": { "type": "string" },
+    "name": { "type": "string" }
+  },
+  "required": [ "build_model", "path", "suite", "name" ],
+  "additionalProperties": false
+}

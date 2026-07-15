@@ -1,0 +1,25 @@
+{
+  "title": "config_descriptor",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "_modifiers": { "type": "array", "items": { "type": "string" } },
+    "_runtime_name": { "type": "string" },
+    "tools": { "type": "array", "items": { "type": "string" } },
+    "dimensions": { "type": "object" },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "options": { "type": "array", "items": { "type": "string" } },
+        "commit": { "type": "string" },
+        "version": { "type": "string" },
+        "kind": { "type": "string" }
+      },
+      "required": [ "version", "kind" ],
+      "additionalProperties": false
+    },
+    "config_id": { "type": "string" }
+  },
+  "required": [ "runtime", "config_id" ],
+  "additionalProperties": false
+}

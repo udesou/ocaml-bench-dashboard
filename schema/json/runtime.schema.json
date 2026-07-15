@@ -1,0 +1,13 @@
+{
+  "title": "runtime",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "options": { "type": "array", "items": { "type": "string" } },
+    "commit": { "type": "string" },
+    "version": { "type": "string" },
+    "kind": { "type": "string" }
+  },
+  "required": [ "version", "kind" ],
+  "additionalProperties": false
+}

@@ -1,0 +1,3 @@
+(executables
+ (names gen_schema gen_vocab)
+ (libraries schema yojson unix))

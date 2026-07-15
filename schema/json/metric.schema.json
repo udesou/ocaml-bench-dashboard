@@ -1,0 +1,14 @@
+{
+  "title": "metric",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "layer": { "type": "integer" },
+    "source": { "type": "string" },
+    "unit": { "type": "string" },
+    "value": { "type": "number" },
+    "name": { "type": "string" }
+  },
+  "required": [ "layer", "source", "unit", "value", "name" ],
+  "additionalProperties": false
+}

@@ -1,0 +1,50 @@
+{
+  "title": "measurement",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "raw_ref": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "layer": { "type": "integer" },
+          "source": { "type": "string" },
+          "unit": { "type": "string" },
+          "value": { "type": "number" },
+          "name": { "type": "string" }
+        },
+        "required": [ "layer", "source", "unit", "value", "name" ],
+        "additionalProperties": false
+      }
+    },
+    "invocation": { "type": "integer" },
+    "config": {
+      "type": "object",
+      "properties": { "config_id": { "type": "string" } },
+      "required": [ "config_id" ],
+      "additionalProperties": false
+    },
+    "benchmark": {
+      "type": "object",
+      "properties": {
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "suite": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": [ "suite", "name" ],
+      "additionalProperties": false
+    },
+    "run_id": { "type": "string" },
+    "schema_version": { "type": "string" }
+  },
+  "required": [
+    "metrics", "invocation", "config", "benchmark", "run_id",
+    "schema_version"
+  ],
+  "additionalProperties": false
+}

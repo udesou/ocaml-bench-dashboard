@@ -1,0 +1,17 @@
+{
+  "title": "comparison",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "baseline_at": { "type": "object" },
+    "fix": { "type": "object" },
+    "variants": { "type": "array", "items": { "type": "object" } },
+    "baseline": { "type": "object" },
+    "mode": { "type": "string" },
+    "over": {},
+    "label": { "type": "string" },
+    "kind": { "type": "string" }
+  },
+  "required": [ "kind" ],
+  "additionalProperties": false
+}

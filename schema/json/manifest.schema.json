@@ -1,0 +1,88 @@
+{
+  "title": "manifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "_produced_by": { "type": "string" },
+    "benchmarks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "suite": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": [ "suite", "name" ],
+        "additionalProperties": false
+      }
+    },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "baseline_at": { "type": "object" },
+          "fix": { "type": "object" },
+          "variants": { "type": "array", "items": { "type": "object" } },
+          "baseline": { "type": "object" },
+          "mode": { "type": "string" },
+          "over": {},
+          "label": { "type": "string" },
+          "kind": { "type": "string" }
+        },
+        "required": [ "kind" ],
+        "additionalProperties": false
+      }
+    },
+    "configs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "_modifiers": { "type": "array", "items": { "type": "string" } },
+          "_runtime_name": { "type": "string" },
+          "tools": { "type": "array", "items": { "type": "string" } },
+          "dimensions": { "type": "object" },
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "options": { "type": "array", "items": { "type": "string" } },
+              "commit": { "type": "string" },
+              "version": { "type": "string" },
+              "kind": { "type": "string" }
+            },
+            "required": [ "version", "kind" ],
+            "additionalProperties": false
+          },
+          "config_id": { "type": "string" }
+        },
+        "required": [ "runtime", "config_id" ],
+        "additionalProperties": false
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "machine": {
+      "type": "object",
+      "properties": {
+        "turbo": { "type": "boolean" },
+        "isolcpus": { "type": "string" },
+        "governor": { "type": "string" },
+        "kernel": { "type": "string" },
+        "cores": { "type": "integer" },
+        "cpu_model": { "type": "string" },
+        "hostname": { "type": "string" }
+      },
+      "required": [ "hostname" ],
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string" },
+    "run_id": { "type": "string" },
+    "schema_version": { "type": "string" }
+  },
+  "required": [ "machine", "created_at", "run_id", "schema_version" ],
+  "additionalProperties": false
+}
