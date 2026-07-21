@@ -9,6 +9,7 @@ export default {
     { name: "Overview (regression)", path: "/index" },
     { name: "Absolute values", path: "/absolute" },
     { name: "Parameter sweeps", path: "/sweep" },
+    { name: "Sweep curves", path: "/curves" },
   ],
   toc: true,
 };
