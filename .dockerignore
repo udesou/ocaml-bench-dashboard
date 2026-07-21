@@ -1,0 +1,6 @@
+# The image needs only the pre-built static site. Excluding everything else
+# keeps the build context to ~21 MB (dist/) instead of shipping node_modules,
+# _build, .git, etc. to the Docker daemon.
+*
+!dist
+!nginx.conf

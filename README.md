@@ -75,6 +75,58 @@ npm run dev        # (restart it — the run is picked up at startup)
 
 ---
 
+## Share the dashboard
+
+`npm run build` produces a **fully static, self-contained site** in `dist/`: the
+chosen run's data is baked into `dist/_file/data/`, and viewing it needs no
+OCaml, Node, or ingestor — just an HTTP server (it can't be opened as `file://`,
+since the browser blocks the module/JSON fetches).
+
+The easiest way to hand it to someone is a tiny Docker image that serves `dist/`
+with nginx. Build the site for the run you want, then package it:
+
+```sh
+export BENCH_RUN_DIR=~/running-ng/<a-run>
+sh scripts/package-image.sh                 # builds dist/ + image tagged by run name
+# or by hand:
+npm run build
+docker build --build-arg RUN_LABEL=<run> -t ocaml-bench-dashboard:<run> .
+
+docker run --rm -p 8080:80 ocaml-bench-dashboard:<run>   # open http://localhost:8080
+```
+
+Which run the image shows is fixed at build time by `BENCH_RUN_DIR`; rebuild with
+a new tag (e.g. `:mmtk-plan-sweep`) to share a different experiment.
+
+**Get it to the other person — pick one:**
+
+- **Registry (easiest for repeated sharing).** Recommended: **GitHub Container
+  Registry (GHCR)**, since the repo already lives on GitHub.
+  ```sh
+  # one-time: a GitHub PAT (classic) with write:packages, then
+  echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
+
+  docker tag  ocaml-bench-dashboard:<run> ghcr.io/<owner>/ocaml-bench-dashboard:<run>
+  docker push ghcr.io/<owner>/ocaml-bench-dashboard:<run>
+  ```
+  The recipient just needs Docker (and `docker login ghcr.io` if the package is
+  private — public packages need no auth):
+  ```sh
+  docker run --rm -p 8080:80 ghcr.io/<owner>/ocaml-bench-dashboard:<run>
+  ```
+  Manage visibility/access under the org or user's **Packages** tab on GitHub.
+  Docker Hub works the same way (`docker.io/<user>/…`) if you prefer it.
+
+- **File (no registry).** Ship a tarball; recipient loads and runs it:
+  ```sh
+  docker save ocaml-bench-dashboard:<run> | gzip > dashboard-<run>.tar.gz
+  # recipient:
+  docker load < dashboard-<run>.tar.gz
+  docker run --rm -p 8080:80 ocaml-bench-dashboard:<run>
+  ```
+
+---
+
 ## What you see
 
 Four pages (sidebar nav):
