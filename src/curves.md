@@ -21,9 +21,12 @@ import * as B from "./components/bench.js";
 const cell = B.index(measurements);
 const benches = B.benchmarksOf(measurements);
 const configs = manifest.configs ?? [];
-// Only dimensions that actually vary can be a curve's x axis or facet.
-const vdims = B.varyingDims(configs);
-const dims = vdims.map((d) => d.dim);
+const cmps = B.comparisons(manifest).filter((c) => !c.kind || c.kind === "inter");
+// Only dimensions that actually vary can be a curve's x axis or facet. Comparison
+// axes (e.g. gc_plan, used to pick LXR/Bactrian) are NOT sweep parameters, so
+// exclude them — a plan comparison must not masquerade as a swept curve.
+const cmpDims = B.comparisonDims(cmps);
+const dims = B.varyingDims(configs).map((d) => d.dim).filter((d) => !cmpDims.includes(d));
 ```
 
 ```js
@@ -34,18 +37,20 @@ display(dims.length === 0
 ```
 
 ```js
-const bench = view(Inputs.select(benches, { label: "Benchmark" }));
-const metric = view(Inputs.select(B.METRICS.map((m) => m.name), { label: "Metric (y)", value: "max_rss", format: B.metricLabel }));
-const xDim = view(Inputs.select(dims, { label: "Parameter (x)", value: dims[0], disabled: dims.length === 0 }));
+// When nothing was swept there is no curve to draw — render no controls at all,
+// only the explanatory note above.
+const bench = dims.length ? view(Inputs.select(benches, { label: "Benchmark" })) : null;
+const metric = dims.length ? view(Inputs.select(B.METRICS.map((m) => m.name), { label: "Metric (y)", value: "max_rss", format: B.metricLabel })) : null;
+const xDim = dims.length ? view(Inputs.select(dims, { label: "Parameter (x)", value: dims[0] })) : null;
 // The facet is optional; "(none)" draws a single panel with all runtimes overlaid.
-const facetDim = view(Inputs.select(["(none)", ...dims.filter((d) => d !== xDim)], { label: "Facet by", value: "(none)" }));
+const facetDim = dims.length ? view(Inputs.select(["(none)", ...dims.filter((d) => d !== xDim)], { label: "Facet by", value: "(none)" })) : null;
 ```
 
 ```js
 // Pin any remaining varying dimensions (not x, not the facet) so each x point
 // maps to a single config per runtime — otherwise several configs collapse onto
 // the same x and the line becomes meaningless.
-const pins = view(B.dimPinsInput(configs, [xDim, facetDim].filter((d) => d && d !== "(none)")));
+const pins = dims.length ? view(B.dimPinsInput(configs, [xDim, facetDim].filter((d) => d && d !== "(none)"))) : {};
 ```
 
 ```js

@@ -16,9 +16,11 @@ const benches = B.benchmarksOf(measurements);
 const configs = manifest.configs ?? [];
 const cmps = B.comparisons(manifest).filter((c) => !c.kind || c.kind === "inter");
 // Only dimensions that actually vary — a parameter with a single value has
-// nothing to sweep, so it is left out of the axis dropdowns.
-const vdims = B.varyingDims(configs);
-const dims = vdims.map((d) => d.dim);
+// nothing to sweep. Comparison axes (e.g. gc_plan, used to pick LXR/Bactrian)
+// are NOT sweep parameters, so exclude them: a plan comparison must not
+// masquerade as a parameter sweep.
+const cmpDims = B.comparisonDims(cmps);
+const dims = B.varyingDims(configs).map((d) => d.dim).filter((d) => !cmpDims.includes(d));
 ```
 
 ```js
@@ -29,16 +31,18 @@ display(dims.length === 0
 ```
 
 ```js
-const bench = view(Inputs.select(benches, { label: "Benchmark" }));
-const metric = view(Inputs.select(B.METRICS.map((m) => m.name), { label: "Metric", value: "wall_time", format: B.metricLabel }));
-const xDim = view(Inputs.select(dims, { label: "X dimension", value: dims[0], disabled: dims.length === 0 }));
-const yDim = view(Inputs.select(dims, { label: "Y dimension", value: dims[1] ?? dims[0], disabled: dims.length < 2 }));
+// When nothing was swept there is nothing to choose — render no controls at all,
+// only the explanatory note above.
+const bench = dims.length ? view(Inputs.select(benches, { label: "Benchmark" })) : null;
+const metric = dims.length ? view(Inputs.select(B.METRICS.map((m) => m.name), { label: "Metric", value: "wall_time", format: B.metricLabel })) : null;
+const xDim = dims.length ? view(Inputs.select(dims, { label: "X dimension", value: dims[0] })) : null;
+const yDim = dims.length ? view(Inputs.select(dims, { label: "Y dimension", value: dims[1] ?? dims[0], disabled: dims.length < 2 })) : null;
 ```
 
 ```js
 // If more than two parameters vary, pin the ones not on an axis to a fixed
 // value so each grid cell maps to a single config (no overplotting).
-const pins = view(B.dimPinsInput(configs, [xDim, yDim]));
+const pins = dims.length ? view(B.dimPinsInput(configs, [xDim, yDim])) : {};
 ```
 
 ```js

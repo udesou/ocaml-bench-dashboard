@@ -1,7 +1,9 @@
 # Absolute values
 
-Raw per-benchmark medians for each runtime (no baseline) — useful when there
-isn't a single reference to compare against, or to sanity-check magnitudes.
+Raw per-benchmark medians for each **selected config** (no baseline) — useful
+when there isn't a single reference to compare against, or to sanity-check
+magnitudes. Configs of the same runtime that differ only by a GC dimension (e.g.
+`gc_plan=Bactrian` vs `LXR`) are shown as separate series.
 
 ```js
 const measurements = await FileAttachment("data/measurements.json").json();
@@ -19,11 +21,13 @@ const configs = manifest.configs ?? [];
 const metric = view(Inputs.select(B.METRICS.map((m) => m.name), {
   label: "Metric", value: "wall_time", format: B.metricLabel,
 }));
-const pins = view(B.dimPinsInput(configs));
+const shown = view(Inputs.checkbox(configs, {
+  label: "Configs", format: B.label, value: configs,
+}));
 ```
 
 ```js
-const rows = B.absoluteRows({ cell, benches, configs: B.filterByDims(configs, pins), metric });
+const rows = B.absoluteRows({ cell, benches, configs: shown, metric });
 display(rows.length
   ? B.absoluteChart(rows, metric)
   : html`<div class="card"><p><em>No data for ${B.metricLabel(metric)}.</em></p></div>`);

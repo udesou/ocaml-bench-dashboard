@@ -22,6 +22,11 @@ let dimension_of_modifier : (string * (string * string)) list =
     (* lavyek-scoped variants map to the SAME axes *)
     ("re_par", ("runtime_events_ring_log2", "log2_words"));
     ("md_par", ("max_domains", "count"));
+    (* MMTk: GC plan + GC-worker-thread count. Name-value modifiers
+       (plan-Bactrian, threads-1) so configs differing only by MMTK_PLAN /
+       MMTK_THREADS get distinct config_ids and plot as separate series. *)
+    ("plan", ("gc_plan", "name"));
+    ("threads", ("gc_threads", "count"));
   ]
 
 (* ------------------------------------------------------------------ *)

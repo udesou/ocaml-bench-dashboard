@@ -46,42 +46,51 @@ display(html`<div class="grid grid-cols-2" style="gap:1rem;">
 </div>`);
 ```
 
-Regression view: each **comparison declared in the run manifest** is rendered
-below. Pick the metric to compare; negative Δ is better (fewer instructions,
-less time). Thresholds: ±1% warn, ±3% regression/improvement.
-
-If this run swept GC parameters, pick the point to compare at — otherwise the
-same runtime shows up once per parameter combination. (Parameters with a single
-value are omitted; use [Parameter sweeps](./sweep) to see the whole grid.)
+Regression view. Pick a **baseline** and one or more **configs to compare**
+against it. This defaults to the comparison declared in the run manifest, but you
+can choose any pair — e.g. compare two MMTk plans directly (LXR vs Bactrian).
+Negative Δ is better (fewer instructions, less time). Thresholds: ±1% warn, ±3%
+regression/improvement. Config labels include their GC dimensions `{gc_plan=…}`.
 
 ```js
 const metric = view(Inputs.select(B.METRICS.map((m) => m.name), {
   label: "Metric", value: "instructions", format: B.metricLabel,
 }));
-const pins = view(B.dimPinsInput(configs));
+const dflt = B.defaultCompare(configs, cmps);
 ```
 
 ```js
-const shown = B.filterByDims(configs, pins);
-display(html`<div>${
-  cmps.map((cmp) => {
-    if (cmp.kind && cmp.kind !== "inter")
-      return html`<div class="card"><h2>${cmp.label ?? cmp.kind}</h2>
-        <p><em>“${cmp.kind}” comparisons are shown on the
-        <a href="./sweep">Parameter sweeps</a> page.</em></p></div>`;
-    const rows = B.interRows(cmp, { cell, benches, configs: shown, metric });
-    if (!rows.length)
-      return html`<div class="card"><h2>${cmp.label ?? "Comparison"}</h2><p><em>No overlapping data for ${B.metricLabel(metric)}.</em></p></div>`;
-    const nImp = rows.filter((r) => r.verdict === "improvement").length;
-    const nReg = rows.filter((r) => r.verdict === "regression").length;
-    return html`<div>
-      <h2>${cmp.label ?? "inter-runtime comparison"}</h2>
-      <p>${nImp} improvement(s), ${nReg} regression(s) across ${new Set(rows.map((r) => r.benchmark)).size} benchmark(s).</p>
-      ${B.deltaChart(rows, metric)}
-      <details><summary>Table</summary>${B.deltaTable(rows)}</details>
-    </div>`;
-  })
-}</div>`);
+const baseline = view(Inputs.select(configs, {
+  label: "Baseline", format: B.label, value: dflt.baseline,
+}));
+```
+
+```js
+const variants = view(Inputs.checkbox(
+  configs.filter((c) => c.config_id !== baseline.config_id),
+  { label: "Compare", format: B.label,
+    value: dflt.variants.filter((c) => c.config_id !== baseline.config_id) }));
+```
+
+```js
+display((() => {
+  if (!variants.length)
+    return html`<div class="card"><p><em>Select one or more configs to compare against <b>${B.label(baseline)}</b>.</em></p></div>`;
+  const rows = B.interRows(
+    { kind: "inter", baseline: { config_id: baseline.config_id },
+      variants: variants.map((c) => ({ config_id: c.config_id })) },
+    { cell, benches, configs, metric });
+  if (!rows.length)
+    return html`<div class="card"><p><em>No overlapping data for ${B.metricLabel(metric)} between these configs.</em></p></div>`;
+  const nImp = rows.filter((r) => r.verdict === "improvement").length;
+  const nReg = rows.filter((r) => r.verdict === "regression").length;
+  return html`<div>
+    <h2>vs ${B.label(baseline)}</h2>
+    <p>${nImp} improvement(s), ${nReg} regression(s) across ${new Set(rows.map((r) => r.benchmark)).size} benchmark(s).</p>
+    ${B.deltaChart(rows, metric)}
+    <details><summary>Table</summary>${B.deltaTable(rows)}</details>
+  </div>`;
+})());
 ```
 
 ---
