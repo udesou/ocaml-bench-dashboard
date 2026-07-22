@@ -63,11 +63,14 @@ the variant is better.
 display((() => {
   if (dims.length === 0) return html``;
   const shown = B.filterByDims(configs, pins);
+  // The heatmap axes already show the swept params, and single-value params add
+  // nothing, so keep only the runtime identity in the labels.
+  const ex = [xDim, yDim, ...B.constantDims(shown)];
   const blocks = [];
   for (const cmp of cmps)
     for (const varSel of cmp.variants ?? []) {
-      const baseLabel = B.label(B.resolve(shown, cmp.baseline)[0] ?? B.resolve(configs, cmp.baseline)[0] ?? { config_id: "?" });
-      const varLabel = B.label(B.resolve(shown, varSel)[0] ?? B.resolve(configs, varSel)[0] ?? { config_id: "?" });
+      const baseLabel = B.label(B.resolve(shown, cmp.baseline)[0] ?? B.resolve(configs, cmp.baseline)[0] ?? { config_id: "?" }, ex);
+      const varLabel = B.label(B.resolve(shown, varSel)[0] ?? B.resolve(configs, varSel)[0] ?? { config_id: "?" }, ex);
       const rows = B.sweepDeltaRows({ cell, configs: shown, bench, metric, xDim, yDim, baseSel: cmp.baseline, varSel });
       if (rows.length) blocks.push(html`<div><h3>${varLabel} vs ${baseLabel}</h3>${B.deltaHeatmap(rows, { metric, xDim, yDim, baseLabel, varLabel })}</div>`);
     }

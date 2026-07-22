@@ -40,52 +40,64 @@ display(html`<div class="grid grid-cols-2" style="gap:1rem;">
   <div class="card"><h2 style="margin:0 0 .1rem;">Run</h2>${kv(runMeta)}
     <dl style="display:grid; grid-template-columns:auto 1fr; gap:.15rem 1rem; margin:.15rem 0 0;">
       <dt style="color:var(--theme-foreground-muted); white-space:nowrap;">Runtimes</dt>
-      <dd style="margin:0;">${[...new Set(configs.map(B.label))].join(" · ")}</dd>
+      <dd style="margin:0;">${[...new Set(configs.map((c) => c.runtime?.version))].join(" · ")}</dd>
     </dl>
   </div>
 </div>`);
 ```
 
-Regression view. Pick a **baseline** and one or more **configs to compare**
-against it. This defaults to the comparison declared in the run manifest, but you
-can choose any pair — e.g. compare two MMTk plans directly (LXR vs Bactrian).
-Negative Δ is better (fewer instructions, less time). Thresholds: ±1% warn, ±3%
-regression/improvement. Config labels include their GC dimensions `{gc_plan=…}`.
+<style>
+.cfgpick { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.3rem 0; }
+.cfgpick-row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem; padding: 0.35rem 0.5rem; border: 1px solid var(--theme-foreground-faintest, #d0d0d0); border-radius: 6px; }
+.cfgpick-dims { display: contents; }
+.cfgpick-f { display: flex; flex-direction: column; font-size: 0.7rem; gap: 2px; }
+.cfgpick-f span { opacity: 0.65; text-transform: none; }
+.cfgpick-rm { margin-left: auto; align-self: center; border: none; background: none; cursor: pointer; font-size: 1.1rem; opacity: 0.6; }
+.cfgpick-rm:hover { opacity: 1; color: var(--theme-red, #d03b3b); }
+.cfgpick-add { align-self: start; font-size: 0.8rem; cursor: pointer; }
+</style>
+
+Regression view. Pick a **baseline** and a **comparison** — each is a runtime,
+plus a value for each swept parameter (`space_overhead`, `minor_heap`, `gc_plan`,
+…) if the run has any. Defaults to the comparison declared in the run manifest,
+but any pair works (e.g. LXR vs Bactrian, or trunk vs the PR at a chosen
+`(s, o)`). Negative Δ is better; thresholds ±1% warn, ±3% regression/improvement.
 
 ```js
 const metric = view(Inputs.select(B.METRICS.map((m) => m.name), {
   label: "Metric", value: "instructions", format: B.metricLabel,
 }));
-const dflt = B.defaultCompare(configs, cmps);
+const dflt = B.defaultPick(configs, cmps);
 ```
 
-```js
-const baseline = view(Inputs.select(configs, {
-  label: "Baseline", format: B.label, value: dflt.baseline,
-}));
-```
+**Baseline**
 
 ```js
-const variants = view(Inputs.checkbox(
-  configs.filter((c) => c.config_id !== baseline.config_id),
-  { label: "Compare", format: B.label,
-    value: dflt.variants.filter((c) => c.config_id !== baseline.config_id) }));
+const baseline = view(B.configPicker(configs, { value: dflt.baseline }));
+```
+
+**Compare**
+
+```js
+const variant = view(B.configPicker(configs, { value: dflt.variants[0] }));
 ```
 
 ```js
 display((() => {
-  if (!variants.length)
-    return html`<div class="card"><p><em>Select one or more configs to compare against <b>${B.label(baseline)}</b>.</em></p></div>`;
+  if (!baseline || !variant)
+    return html`<div class="card"><p><em>Pick a baseline and a comparison config.</em></p></div>`;
+  if (variant.config_id === baseline.config_id)
+    return html`<div class="card"><p><em>Baseline and comparison are the same config — change one.</em></p></div>`;
   const rows = B.interRows(
     { kind: "inter", baseline: { config_id: baseline.config_id },
-      variants: variants.map((c) => ({ config_id: c.config_id })) },
+      variants: [{ config_id: variant.config_id }] },
     { cell, benches, configs, metric });
   if (!rows.length)
     return html`<div class="card"><p><em>No overlapping data for ${B.metricLabel(metric)} between these configs.</em></p></div>`;
   const nImp = rows.filter((r) => r.verdict === "improvement").length;
   const nReg = rows.filter((r) => r.verdict === "regression").length;
   return html`<div>
-    <h2>vs ${B.label(baseline)}</h2>
+    <h2>${B.compareTitle(variant, baseline, configs)}</h2>
     <p>${nImp} improvement(s), ${nReg} regression(s) across ${new Set(rows.map((r) => r.benchmark)).size} benchmark(s).</p>
     ${B.deltaChart(rows, metric)}
     <details><summary>Table</summary>${B.deltaTable(rows)}</details>
