@@ -40,7 +40,7 @@ display(html`<div class="grid grid-cols-2" style="gap:1rem;">
   <div class="card"><h2 style="margin:0 0 .1rem;">Run</h2>${kv(runMeta)}
     <dl style="display:grid; grid-template-columns:auto 1fr; gap:.15rem 1rem; margin:.15rem 0 0;">
       <dt style="color:var(--theme-foreground-muted); white-space:nowrap;">Runtimes</dt>
-      <dd style="margin:0;">${[...new Set(configs.map((c) => c.runtime?.version))].join(" · ")}</dd>
+      <dd style="margin:0;">${[...new Set(configs.map((c) => B.runtimeId(c)))].join(" · ")}</dd>
     </dl>
   </div>
 </div>`);
