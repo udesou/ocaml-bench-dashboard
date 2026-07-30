@@ -3,8 +3,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "options": { "type": "array", "items": { "type": "string" } },
-    "commit": { "type": "string" },
+    "options": {
+      "default": [],
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "commit": { "default": null, "type": [ "string", "null" ] },
     "version": { "type": "string" },
     "kind": { "type": "string" }
   },

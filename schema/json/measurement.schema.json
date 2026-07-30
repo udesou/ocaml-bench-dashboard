@@ -4,6 +4,7 @@
   "type": "object",
   "properties": {
     "raw_ref": {
+      "default": [],
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
@@ -32,7 +33,11 @@
     "benchmark": {
       "type": "object",
       "properties": {
-        "tags": { "type": "array", "items": { "type": "string" } },
+        "tags": {
+          "default": [],
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "suite": { "type": "string" },
         "name": { "type": "string" }
       },

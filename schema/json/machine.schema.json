@@ -3,12 +3,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "turbo": { "type": "boolean" },
-    "isolcpus": { "type": "string" },
-    "governor": { "type": "string" },
-    "kernel": { "type": "string" },
-    "cores": { "type": "integer" },
-    "cpu_model": { "type": "string" },
+    "turbo": { "default": null, "type": [ "boolean", "null" ] },
+    "isolcpus": { "default": null, "type": [ "string", "null" ] },
+    "governor": { "default": null, "type": [ "string", "null" ] },
+    "kernel": { "default": null, "type": [ "string", "null" ] },
+    "cores": { "default": null, "type": [ "integer", "null" ] },
+    "cpu_model": { "default": null, "type": [ "string", "null" ] },
     "hostname": { "type": "string" }
   },
   "required": [ "hostname" ],

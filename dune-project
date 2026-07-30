@@ -17,5 +17,14 @@
   (ocaml (>= 4.14))
   dune
   yojson
-  ppx_deriving_yojson
-  ppx_deriving_jsonschema))
+  (ppx_deriving_yojson (>= 3.9.0))
+  ; Upper bounds are deliberate, not laziness — see CLAUDE.md "Gotchas".
+  ; ppx_deriving_jsonschema 0.0.8 renamed the runtime functions the deriver
+  ; emits (`list_jsonschema` and friends), so lib/schema stops compiling with
+  ; `Unbound value list_jsonschema`. It also generates different `default` /
+  ; nullability output, which would silently rewrite every schema/json/*.json.
+  ; Raise this bound only together with a regeneration commit.
+  (ppx_deriving_jsonschema (and (>= 0.0.7) (< 0.0.8)))
+  ; ppxlib 0.38 is what 0.0.7 is built against here; both ppx above must agree
+  ; on it, so an unconstrained solve can pick a combination that won't build.
+  (ppxlib (>= 0.36.0))))
