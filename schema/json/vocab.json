@@ -59,6 +59,6 @@
     "plan": { "dimension": "gc_plan", "unit": "name" },
     "threads": { "dimension": "gc_threads", "unit": "count" }
   },
-  "olly_output_version_supported": [ 1 ],
+  "olly_output_version_supported": [ 1, 2 ],
   "tool_supported_versions": { "olly": [ "0.5" ], "perf": [ "6" ] }
 }

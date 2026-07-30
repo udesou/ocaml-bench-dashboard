@@ -119,10 +119,17 @@ let tool_supported (tool : string) (version : string) : bool =
   | None -> false
 
 (** Distinct from the release version above: olly self-stamps its JSON *output*
-    with a top-level integer "version" (currently 1) — the format version of the
-    gc-stats JSON, independent of the 0.5.x release number. The adapter checks
-    this against the set below; the uniform guard is the release version. *)
-let olly_output_version_supported : int list = [ 1 ]
+    with a top-level integer "version" — the format version of the gc-stats JSON,
+    independent of the 0.5.x release number. The adapter checks this against the
+    set below; the uniform guard is the release version.
+
+    Both 1 and 2 are supported. Version 2 (olly `9e5b2d6`, "Don't crash on pauses
+    greater than 10sec") added an [outliers] block for pauses beyond the
+    histogram's range and made [max_latency] account for them; it changed no
+    field that [olly_field_map] reads, so the maps above parse either version.
+    Listing only 1 meant every run against a current olly tripped the adapter's
+    "metrics may be misparsed" warning while in fact parsing correctly. *)
+let olly_output_version_supported : int list = [ 1; 2 ]
 
 (* ------------------------------------------------------------------ *)
 (* Canonical config_id (DATA_CONTRACT §4.2 / §8)                       *)

@@ -223,8 +223,9 @@ A breaking olly/perf change is caught by the third: the runner records each tool
 or git checkout, since olly has no `--version`; perf via `perf --version`), and
 the ingestor prefix-matches against `tool_supported_versions`, failing loud on an
 unsupported one. olly *also* self-stamps a coarser **output-format** version in its
-JSON (`"version": 1`), checked against `olly_output_version_supported`. A tool
-change bumps `schema_version` only if it leaks to canonical names/units.
+JSON (`"version": 1` or `2`), checked against `olly_output_version_supported`. A
+tool change bumps `schema_version` only if it leaks to canonical names/units —
+olly's 1 → 2 did not (it added an `outliers` block), so both are accepted.
 
 - Every artifact carries `schema_version` (semver). A **major** mismatch is
   refused; a newer **minor** is read with unknown fields preserved.
