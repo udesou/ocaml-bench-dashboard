@@ -58,8 +58,14 @@ short and current. `README.md` is the human overview; the authoritative spec is
 ## Build / run
 
 - Dedicated opam switch `ocaml-bench-dashboard` (default repo only — **no OxCaml
-  overlay**; see gotchas). Deps: `dune yojson ppx_deriving_yojson
-  ppx_deriving_jsonschema` (+ `yaml` for the running-ng adapter).
+  overlay**; see gotchas). Recreate it with:
+  ```sh
+  opam switch create ocaml-bench-dashboard ocaml-base-compiler.5.4.1
+  opam install --switch=ocaml-bench-dashboard dune yojson yaml \
+    ppx_deriving_yojson 'ppx_deriving_jsonschema<0.0.8'
+  ```
+  The version bound is not optional — see gotchas. `yaml` is for the running-ng
+  adapter, which builds against this switch.
 - `dune build` → then `cp _build/default/ingest/ingest.exe bin/ingest`.
 - `dune exec tools/gen_schema.exe -- schema/json` / `gen_vocab.exe` after any
   `lib/schema` change; `dune exec test/smoke.exe` to sanity-check.
@@ -74,6 +80,17 @@ short and current. `README.md` is the human overview; the authoritative spec is
 - **OxCaml overlay repos were removed from the switch.** They served `+ox`
   packages (e.g. `re 1.14.0+ox`) with `@@ portable` syntax that stock 5.4.1 can't
   parse. Keep this switch on the `default` repo only.
+- **`ppx_deriving_jsonschema` is capped below 0.0.8** in `dune-project`. 0.0.8
+  renamed the runtime functions the deriver emits, so `lib/schema` fails with
+  `Unbound value list_jsonschema`; it also changes the `default`/nullability
+  output, silently rewriting every `schema/json/*.json`. Raise the cap only
+  together with a regeneration commit. Related: don't build this repo in the
+  `running-ng-tools` switch — it's on an OCaml 5.5 trunk snapshot where ppxlib
+  0.38 won't compile at all.
+- **Generated artifacts drift if you skip the regen step.** The committed
+  `schema/json/*.json` were once produced by an older deriver than the pinned
+  one; the mismatch stayed invisible until someone rebuilt. After any
+  `lib/schema` change run *both* generators and commit the result.
 - **`ppx_deriving_yojson`'s `[@default]` drops a field equal to its default on
   output.** `schema_version` is intentionally mandatory (no default) so it's
   always emitted; `gen_schema` also relaxes `required` for defaulted collection

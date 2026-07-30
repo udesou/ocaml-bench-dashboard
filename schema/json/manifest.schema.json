@@ -3,13 +3,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "_produced_by": { "type": "string" },
+    "_produced_by": { "default": null, "type": [ "string", "null" ] },
     "benchmarks": {
+      "default": [],
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "tags": { "type": "array", "items": { "type": "string" } },
+          "tags": {
+            "default": [],
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "suite": { "type": "string" },
           "name": { "type": "string" }
         },
@@ -18,17 +23,33 @@
       }
     },
     "comparisons": {
+      "default": [],
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "baseline_at": { "type": "object" },
-          "fix": { "type": "object" },
-          "variants": { "type": "array", "items": { "type": "object" } },
-          "baseline": { "type": "object" },
-          "mode": { "type": "string" },
-          "over": {},
-          "label": { "type": "string" },
+          "baseline_at": {
+            "default": null,
+            "anyOf": [ { "type": "object" }, { "type": "null" } ]
+          },
+          "fix": {
+            "default": null,
+            "anyOf": [ { "type": "object" }, { "type": "null" } ]
+          },
+          "variants": {
+            "default": null,
+            "anyOf": [
+              { "type": "array", "items": { "type": "object" } },
+              { "type": "null" }
+            ]
+          },
+          "baseline": {
+            "default": null,
+            "anyOf": [ { "type": "object" }, { "type": "null" } ]
+          },
+          "mode": { "default": null, "type": [ "string", "null" ] },
+          "over": { "default": null, "anyOf": [ {}, { "type": "null" } ] },
+          "label": { "default": null, "type": [ "string", "null" ] },
           "kind": { "type": "string" }
         },
         "required": [ "kind" ],
@@ -36,19 +57,32 @@
       }
     },
     "configs": {
+      "default": [],
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "_modifiers": { "type": "array", "items": { "type": "string" } },
-          "_runtime_name": { "type": "string" },
-          "tools": { "type": "array", "items": { "type": "string" } },
-          "dimensions": { "type": "object" },
+          "_modifiers": {
+            "default": [],
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "_runtime_name": { "default": null, "type": [ "string", "null" ] },
+          "tools": {
+            "default": [],
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "dimensions": { "default": [], "type": "object" },
           "runtime": {
             "type": "object",
             "properties": {
-              "options": { "type": "array", "items": { "type": "string" } },
-              "commit": { "type": "string" },
+              "options": {
+                "default": [],
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "commit": { "default": null, "type": [ "string", "null" ] },
               "version": { "type": "string" },
               "kind": { "type": "string" }
             },
@@ -62,18 +96,19 @@
       }
     },
     "tool_versions": {
+      "default": [],
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
     "machine": {
       "type": "object",
       "properties": {
-        "turbo": { "type": "boolean" },
-        "isolcpus": { "type": "string" },
-        "governor": { "type": "string" },
-        "kernel": { "type": "string" },
-        "cores": { "type": "integer" },
-        "cpu_model": { "type": "string" },
+        "turbo": { "default": null, "type": [ "boolean", "null" ] },
+        "isolcpus": { "default": null, "type": [ "string", "null" ] },
+        "governor": { "default": null, "type": [ "string", "null" ] },
+        "kernel": { "default": null, "type": [ "string", "null" ] },
+        "cores": { "default": null, "type": [ "integer", "null" ] },
+        "cpu_model": { "default": null, "type": [ "string", "null" ] },
         "hostname": { "type": "string" }
       },
       "required": [ "hostname" ],

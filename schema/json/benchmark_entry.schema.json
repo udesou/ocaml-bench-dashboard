@@ -4,8 +4,8 @@
   "type": "object",
   "properties": {
     "build_model": { "type": "string" },
-    "tags": { "type": "array", "items": { "type": "string" } },
-    "args": { "type": "array", "items": { "type": "string" } },
+    "tags": { "default": [], "type": "array", "items": { "type": "string" } },
+    "args": { "default": [], "type": "array", "items": { "type": "string" } },
     "path": { "type": "string" },
     "suite": { "type": "string" },
     "name": { "type": "string" }

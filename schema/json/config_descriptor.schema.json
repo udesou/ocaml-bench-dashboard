@@ -3,15 +3,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "_modifiers": { "type": "array", "items": { "type": "string" } },
-    "_runtime_name": { "type": "string" },
-    "tools": { "type": "array", "items": { "type": "string" } },
-    "dimensions": { "type": "object" },
+    "_modifiers": {
+      "default": [],
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "_runtime_name": { "default": null, "type": [ "string", "null" ] },
+    "tools": {
+      "default": [],
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "dimensions": { "default": [], "type": "object" },
     "runtime": {
       "type": "object",
       "properties": {
-        "options": { "type": "array", "items": { "type": "string" } },
-        "commit": { "type": "string" },
+        "options": {
+          "default": [],
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "commit": { "default": null, "type": [ "string", "null" ] },
         "version": { "type": "string" },
         "kind": { "type": "string" }
       },
