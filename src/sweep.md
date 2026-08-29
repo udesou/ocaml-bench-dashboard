@@ -34,7 +34,7 @@ display(dims.length === 0
 // When nothing was swept there is nothing to choose — render no controls at all,
 // only the explanatory note above.
 const bench = dims.length ? view(Inputs.select(benches, { label: "Benchmark" })) : null;
-const metric = dims.length ? view(Inputs.select(B.METRICS.map((m) => m.name), { label: "Metric", value: "wall_time", format: B.metricLabel })) : null;
+const metric = dims.length ? view(Inputs.select(B.ALL_METRICS.map((m) => m.name), { label: "Metric", value: "wall_time", format: B.metricLabel })) : null;
 const xDim = dims.length ? view(Inputs.select(dims, { label: "X dimension", value: dims[0] })) : null;
 const yDim = dims.length ? view(Inputs.select(dims, { label: "Y dimension", value: dims[1] ?? dims[0], disabled: dims.length < 2 })) : null;
 ```
@@ -82,4 +82,4 @@ display((() => {
 
 ---
 
-*See also [Overview](./index), [Absolute values](./absolute).*
+*See also [Overview](./index), [Absolute values](./absolute), [Sweep curves](./curves), [Space × time tradeoff](./tradeoff).*

@@ -18,6 +18,7 @@ short and current. `README.md` is the human overview; the authoritative spec is
 
 ## Hard rules (do not violate)
 
+- **Do not comment on PRs, or add to PRs, unless explicitly asked to.**
 - **No "Claude"/Anthropic/Co-Authored-By: Claude in commit messages.**
 - **Commit only when asked.** Nothing here is committed yet by default.
 - **Contract-first.** Any pipeline change (new metric, dimension, runtime kind,

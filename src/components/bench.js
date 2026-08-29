@@ -22,8 +22,38 @@ export const METRICS = [
   { name: "minor_collections", label: "Minor collections", unit: "count" },
   { name: "promoted_pct", label: "Promoted", unit: "%" },
 ];
+// Rest of the contract's metric catalog (registry.ml). Kept out of METRICS so the
+// existing pages' selectors are unchanged, but nameable everywhere: the
+// space/time page offers memory-footprint and hardware metrics that the Δ and
+// heatmap pages have no use for.
+export const MORE_METRICS = [
+  { name: "major_words", label: "Major heap words", unit: "words" },
+  { name: "minor_words", label: "Minor words", unit: "words" },
+  { name: "page_faults", label: "Page faults", unit: "count" },
+  { name: "mean_latency", label: "Mean latency", unit: "ms" },
+  { name: "cycles", label: "Cycles", unit: "count" },
+  { name: "task_clock", label: "Task clock", unit: "ns" },
+];
+// Every metric in the contract catalog. Selectors that should offer the full
+// set (overview Δ, absolute values) use this; METRICS alone is the short list.
+export const ALL_METRICS = [...METRICS, ...MORE_METRICS];
 export const GC_METRICS = ["gc_overhead", "gc_time", "major_collections", "minor_collections", "promoted_pct"];
-export const metricLabel = (name) => METRICS.find((m) => m.name === name)?.label ?? name;
+export const metricLabel = (name) => ALL_METRICS.find((m) => m.name === name)?.label ?? name;
+export const metricUnit = (name) => ALL_METRICS.find((m) => m.name === name)?.unit ?? null;
+
+// Categorical series palette, one entry per light/dark surface. Fixed order,
+// never cycled: slot 0 is always the first series. These three steps are
+// validated for all-pairs use (scatter — every series is adjacent to every
+// other) on both surfaces; slots 3+ are only gate-safe for adjacent forms, so a
+// scatter with more than three series also carries symbol + label encoding.
+export const SERIES_LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7", "#008300", "#e34948"];
+export const SERIES_DARK = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9", "#008300", "#e66767"];
+export const SURFACE = { light: "#fcfcfb", dark: "#1a1a19" };
+export const INK = { light: "#0b0b0b", dark: "#ffffff" };
+export const seriesRange = (n, dark = false) => {
+  const p = dark ? SERIES_DARK : SERIES_LIGHT;
+  return Array.from({ length: Math.max(1, n) }, (_, i) => p[i % p.length]);
+};
 
 // ---- data indexing ---------------------------------------------------------
 export function index(measurements) {
@@ -105,7 +135,7 @@ export const label = (c, exclude = []) => {
   const d = Object.entries(c.dimensions ?? {})
     .filter(([k]) => !exclude.includes(k))
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, val]) => `${k}=${val}`)
+    .map(([k, val]) => `${k}=${dimValueLabel(val)}`)
     .join(", ");
   return d ? `${base} {${d}}` : base;
 };
@@ -131,9 +161,25 @@ const cmpVal = (a, b) =>
   typeof a === "number" && typeof b === "number" ? a - b
   : String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 
-// Dimensions that actually VARY across the run (>1 distinct value), each with
-// its sorted distinct values. Single-valued dimensions are omitted — there is
-// nothing to choose, so they never appear in a dropdown.
+// The value standing for "this config does not carry that dimension at all".
+// A run that sweeps a modifier ON and OFF (e.g. the glibc MALLOC_* thresholds:
+// set, vs left to glibc's own dynamic adjustment, which no env var can express)
+// produces configs where the dimension is PRESENT on one half and ABSENT on the
+// other. Absent is a real, selectable setting, not missing data — so it gets a
+// sentinel and appears in the dropdowns like any other value.
+export const DIM_ABSENT = "\u0000absent";
+export const dimValueLabel = (v) => (v === DIM_ABSENT ? "(default)" : String(v));
+// The value to PLOT for dimension `k` of config `c`: absent becomes the readable
+// "(default)" category rather than undefined, so the half of a with/without run
+// that lacks the dimension is drawn instead of silently dropped. Identity and
+// filtering use DIM_ABSENT; only display uses this.
+export const dimAxisValue = (c, k) =>
+  (c.dimensions?.[k] === undefined ? dimValueLabel(DIM_ABSENT) : c.dimensions[k]);
+
+// Dimensions that actually VARY across the run, each with its sorted distinct
+// values. A dimension varies if it takes >1 value OR if some configs carry it
+// and others don't (then DIM_ABSENT is one of its values). Dimensions with
+// nothing to choose are omitted — they never appear in a dropdown.
 export function varyingDims(configs) {
   const seen = new Map(); // dim -> Map(json -> value)
   for (const c of configs)
@@ -141,6 +187,9 @@ export function varyingDims(configs) {
       if (!seen.has(k)) seen.set(k, new Map());
       seen.get(k).set(JSON.stringify(v), v);
     }
+  for (const [k, m] of seen)
+    if (configs.some((c) => c.dimensions?.[k] === undefined))
+      m.set(JSON.stringify(DIM_ABSENT), DIM_ABSENT);
   return [...seen.entries()]
     .filter(([, m]) => m.size > 1)
     .map(([dim, m]) => ({ dim, values: [...m.values()].sort(cmpVal) }));
@@ -152,8 +201,28 @@ export function varyingDims(configs) {
 // config that HAS the dimension with a different value is dropped.
 export function filterByDims(configs, pins) {
   const ps = Object.entries(pins ?? {}).filter(([, v]) => v != null);
-  return configs.filter((c) => ps.every(([k, v]) =>
-    c.dimensions?.[k] === undefined || JSON.stringify(c.dimensions[k]) === JSON.stringify(v)));
+  if (!ps.length) return configs;
+  // Which dimensions each runtime's configs carry at all — decides whether a
+  // config that LACKS a pinned dimension is cross-cutting or is the "off" half
+  // of a with/without sweep.
+  const carried = new Map();
+  for (const c of configs) {
+    const r = runtimeId(c);
+    if (!carried.has(r)) carried.set(r, new Set());
+    for (const k of Object.keys(c.dimensions ?? {})) carried.get(r).add(k);
+  }
+  return configs.filter((c) => ps.every(([k, v]) => {
+    const has = c.dimensions?.[k] !== undefined;
+    // Pinning DIM_ABSENT selects exactly the configs WITHOUT that dimension —
+    // the "modifier off" half of a with/without run.
+    if (String(v) === DIM_ABSENT) return !has;
+    if (has) return JSON.stringify(c.dimensions[k]) === JSON.stringify(v);
+    // Lacks it: cross-cutting only if NO config of the SAME runtime carries it
+    // — that's the stock-baseline-vs-gc_plan case, which must survive the pin.
+    // If this runtime does carry it elsewhere, this config is the other half of
+    // an on/off axis and pinning a value must exclude it.
+    return !carried.get(runtimeId(c))?.has(k);
+  }));
 }
 
 // Dimension keys a comparison uses as baseline/variant selectors — these are the
@@ -171,11 +240,21 @@ export function comparisonDims(cmps) {
 // Build an <Inputs.form> with one <select> per varying dimension (minus any in
 // `exclude`); its value is a {dim: value} pins object. Empty form when nothing
 // varies. Requires Inputs (imported below).
-export function dimPinsInput(configs, exclude = []) {
+//
+// `allowAll` adds an "(all)" choice (value null, which filterByDims reads as
+// "any") and makes it the default. A heatmap or a curve NEEDS every remaining
+// parameter pinned — one config per cell / per x point — but a scatter of
+// (space, time) does not: leaving a parameter unpinned there is the whole point,
+// since every extra parameter value is another candidate point on the frontier.
+export function dimPinsInput(configs, exclude = [], { allowAll = false } = {}) {
   const vd = varyingDims(configs).filter((d) => !exclude.includes(d.dim));
   if (!vd.length) return Inputs.form({});
   return Inputs.form(
-    Object.fromEntries(vd.map((d) => [d.dim, Inputs.select(d.values, { label: d.dim, value: d.values[0] })]))
+    Object.fromEntries(vd.map((d) => [d.dim, Inputs.select(allowAll ? [null, ...d.values] : d.values, {
+      label: d.dim,
+      value: allowAll ? null : d.values[0],
+      format: (v) => (v === null ? "(all)" : String(v)),
+    })]))
   );
 }
 
@@ -230,18 +309,29 @@ export function configPicker(configs, { multiple = false, value = null } = {}) {
 
   const valuesFor = (runtime, dim) => {
     const m = new Map();
-    for (const c of configs)
-      if (runtimeId(c) === runtime && c.dimensions?.[dim] !== undefined)
-        m.set(JSON.stringify(c.dimensions[dim]), c.dimensions[dim]);
+    let anyAbsent = false;
+    for (const c of configs) {
+      if (runtimeId(c) !== runtime) continue;
+      if (c.dimensions?.[dim] === undefined) anyAbsent = true;
+      else m.set(JSON.stringify(c.dimensions[dim]), c.dimensions[dim]);
+    }
+    // "(default)" is offered whenever this runtime has configs without the
+    // dimension, so a with/without sweep is selectable on both sides.
+    if (anyAbsent) m.set(JSON.stringify(DIM_ABSENT), DIM_ABSENT);
     return [...m.values()].sort(cmpVal);
   };
   const match = (runtime, dimvals) =>
     configs.find((c) =>
       runtimeId(c) === runtime &&
-      Object.entries(dimvals).every(([k, v]) => String(c.dimensions?.[k]) === String(v))) ?? null;
+      Object.entries(dimvals).every(([k, v]) => (String(v) === DIM_ABSENT
+        ? c.dimensions?.[k] === undefined
+        : String(c.dimensions?.[k]) === String(v)))) ?? null;
   const toInit = (cfg) => ({
     runtime: cfg ? runtimeId(cfg) : undefined,
-    dims: Object.fromEntries(vdims.map((d) => [d, cfg?.dimensions?.[d]])),
+    // A config that lacks a varying dimension is pinned to "(default)", not to
+    // undefined — otherwise it would match the other half of the run too.
+    dims: Object.fromEntries(vdims.map((d) => [d,
+      cfg ? (cfg.dimensions?.[d] === undefined ? DIM_ABSENT : cfg.dimensions[d]) : undefined])),
   });
 
   const container = document.createElement("div");
@@ -282,7 +372,8 @@ export function configPicker(configs, { multiple = false, value = null } = {}) {
         const vals = valuesFor(runtimeSel.value, d);
         if (!vals.length) continue;                   // dim absent for this runtime
         const cur = init2?.dims?.[d] ?? vals[0];
-        const s = sel(vals, cur);
+        // dimValueLabel so DIM_ABSENT reads as "(default)" instead of its sentinel.
+        const s = sel(vals, cur, dimValueLabel);
         s.addEventListener("input", emit);
         dimBox.appendChild(field(d, s));
         row.dimSels.push({ dim: d, sel: s });
@@ -461,7 +552,7 @@ export function sweepRows({ cell, configs, bench, metric, xDim, yDim }) {
   const rows = [];
   for (const c of configs) {
     const v = median(cellGet(cell, bench, c.config_id, metric));
-    if (v != null) rows.push({ x: c.dimensions?.[xDim], y: c.dimensions?.[yDim], value: v, runtime: label(c, ex) });
+    if (v != null) rows.push({ x: dimAxisValue(c, xDim), y: dimAxisValue(c, yDim), value: v, runtime: label(c, ex) });
   }
   return rows;
 }
@@ -547,15 +638,14 @@ export function curveRows({ cell, configs, bench, metric, xDim, facetDim }) {
   const ex = [xDim, facetDim, ...constantDims(configs)].filter(Boolean);
   const rows = [];
   for (const c of configs) {
-    const x = c.dimensions?.[xDim];
-    if (x == null) continue;
+    const x = dimAxisValue(c, xDim);
     const v = median(cellGet(cell, bench, c.config_id, metric));
     if (v == null) continue;
     rows.push({
       x: numericish(x),
       value: v,
       runtime: label(c, ex),
-      facet: facetDim ? c.dimensions?.[facetDim] : null,
+      facet: facetDim ? dimAxisValue(c, facetDim) : null,
     });
   }
   return rows.sort((a, b) => cmpVal(a.x, b.x));
@@ -580,6 +670,301 @@ export function curveChart(rows, { metric, xDim, facetDim }) {
         title: (d) => `${d.runtime}\n${xDim}=${d.x}${facetDim ? `, ${facetDim}=${d.facet}` : ""}\n${metricLabel(metric)}=${(+d.value).toPrecision(4)}` }),
     ],
   });
+}
+
+// ---- space × time tradeoff --------------------------------------------------
+// A GC parameter point buys time with memory, or memory with time; neither axis
+// is the "answer" on its own. So plot both: x = a space metric, y = a time
+// metric, one point per configuration, joined along the swept parameter. The
+// interesting configurations are the non-dominated ones — the Pareto frontier —
+// and the interesting comparison between two runtimes is whether one runtime's
+// whole frontier sits below/left of the other's.
+
+export const ALL_BENCHES = "★ all benchmarks (normalized)";
+export const geomean = (xs) => {
+  const a = (xs ?? []).filter((v) => v != null && v > 0);
+  return a.length ? Math.exp(a.reduce((s, v) => s + Math.log(v), 0) / a.length) : null;
+};
+
+// One number per (config, metric): a single benchmark's median, or — for
+// ALL_BENCHES — the geometric mean over benchmarks of each benchmark's value
+// relative to the BEST (smallest) value any shown config reached on it.
+// Normalizing per benchmark is what makes a suite-level aggregate meaningful: a
+// 3 GiB benchmark must not swamp a 30 MiB one, and 1.0 on an axis then reads as
+// "as good as the best point in this view".
+//
+// The aggregate counts only benchmarks measured under EVERY shown config (a
+// balanced panel). A benchmark that ran under one runtime but not the other
+// (pplacer, in the 2026-07-18 sweep) would otherwise enter one side's geomean and
+// not the other's, so the two aggregates would summarize different suites — worth
+// ~1pp of phantom Δ in that run. With the panel balanced the per-benchmark
+// normalizer cancels exactly in a ratio, so a Δ of aggregates IS the geomean of
+// the per-benchmark Δs.
+//
+// Returns the accessor carrying `.benches` (aggregated) and `.dropped`
+// (excluded), so a page can caption the real count and disclose what it left out.
+export function valueTable({ cell, configs, benches, bench, metrics }) {
+  const t = new Map(); // `${config_id}\0${metric}` -> number | null
+  const key = (cid, m) => cid + "\u0000" + m;
+  const at = (b, c, m) => median(cellGet(cell, b, c.config_id, m));
+  const get = (cid, m) => t.get(key(cid, m)) ?? null;
+  if (bench !== ALL_BENCHES) {
+    for (const c of configs) for (const m of metrics) t.set(key(c.config_id, m), at(bench, c, m));
+    return Object.assign(get, { benches: [bench], dropped: [] });
+  }
+  const complete = benches.filter((b) => metrics.every((m) => configs.every((c) => (at(b, c, m) ?? 0) > 0)));
+  for (const m of metrics) {
+    const ratios = new Map(configs.map((c) => [c.config_id, []]));
+    for (const b of complete) {
+      const vals = configs.map((c) => [c.config_id, at(b, c, m)]);
+      const best = Math.min(...vals.map(([, v]) => v));
+      for (const [cid, v] of vals) ratios.get(cid).push(v / best);
+    }
+    for (const c of configs) t.set(key(c.config_id, m), geomean(ratios.get(c.config_id)));
+  }
+  return Object.assign(get, { benches: complete, dropped: benches.filter((b) => !complete.includes(b)) });
+}
+
+// Compact parameter value for a direct label: GC parameters are word counts in
+// the 10^5–10^6 range, and five raw digits per label is what turns a frontier
+// into a smudge.
+export const paramFmt = (v) => {
+  if (typeof v !== "number" || Math.abs(v) < 1e4) return String(v);
+  return v >= 1e6 ? +(v / 1e6).toFixed(v < 1e7 ? 1 : 0) + "M" : Math.round(v / 1e3) + "k";
+};
+
+// Which points earn a direct label: a number on every point is noise, so label
+// only each series' anchors — its cheapest-space end, its fastest end, and its
+// "knee" (the point nearest the ideal corner once both axes are normalized),
+// which is the compromise configuration a reader is usually looking for. Full
+// detail stays in the tooltip and the frontier table.
+export function anchorPoints(rows, { key = (r) => JSON.stringify([r.facet ?? null, r.runtime]), x = (r) => r.x, y = (r) => r.y } = {}) {
+  if (!rows.length) return [];
+  const xs = rows.map(x), ys = rows.map(y);
+  const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
+  const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
+  const dist = (r) => Math.hypot(x1 > x0 ? (x(r) - x0) / (x1 - x0) : 0, y1 > y0 ? (y(r) - y0) / (y1 - y0) : 0);
+  const groups = new Map();
+  for (const r of rows) {
+    const k = key(r);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const out = new Set();
+  for (const g of groups.values()) {
+    out.add(g.reduce((a, b) => (x(b) < x(a) ? b : a)));
+    out.add(g.reduce((a, b) => (y(b) < y(a) ? b : a)));
+    out.add(g.reduce((a, b) => (dist(b) < dist(a) ? b : a)));
+  }
+  return [...out];
+}
+
+// Axis caption: absolute values carry the contract's unit; the aggregate is
+// unitless (a ratio to the best point in view), and saying so on the axis is the
+// only thing that keeps the two modes from being confused for each other.
+export function tradeoffAxis(metric, bench, nBenches) {
+  if (bench === ALL_BENCHES) return `${metricLabel(metric)} (× best; geomean, n=${nBenches})`;
+  const u = metricUnit(metric);
+  return u ? `${metricLabel(metric)} (${u}, median)` : `${metricLabel(metric)} (median)`;
+}
+
+const dimText = (c, dims) => (dims ?? []).filter((d) => c.dimensions?.[d] !== undefined).map((d) => `${d}=${c.dimensions[d]}`).join(", ");
+
+export function tradeoffRows({ val, configs, xMetric, yMetric, traceDim, facetDim, sweepDims = [] }) {
+  // Color identity = runtime, NOT parameter point: the swept parameters are
+  // already encoded by position along the trace, and letting them into the label
+  // would turn a 5 × 5 grid into 25 colors.
+  const ex = [...sweepDims, ...constantDims(configs)];
+  const rows = [];
+  for (const c of configs) {
+    const x = val(c.config_id, xMetric), y = val(c.config_id, yMetric);
+    if (x == null || y == null) continue;
+    rows.push({
+      x, y,
+      runtime: label(c, ex),
+      trace: traceDim ? numericish(c.dimensions?.[traceDim]) : null,
+      facet: facetDim ? c.dimensions?.[facetDim] : null,
+      // Line identity: same runtime AND the same value of every parameter other
+      // than the traced one. Without this, an unpinned second parameter joins
+      // points that differ in two dimensions at once — a zigzag, not a curve.
+      z: label(c, [traceDim].filter(Boolean)),
+      params: dimText(c, sweepDims),
+      config_id: c.config_id,
+    });
+  }
+  return rows.sort((a, b) => cmpVal(a.trace, b.trace));
+}
+
+// Non-dominated points, both axes lower-is-better: sort by x, keep only the ones
+// that improve on the best y so far. Strict `<` also drops an equal-y point that
+// costs more x — it is dominated.
+export function paretoFront(rows) {
+  const out = [];
+  let best = Infinity;
+  for (const r of [...rows].sort((a, b) => a.x - b.x || a.y - b.y)) if (r.y < best) { out.push(r); best = r.y; }
+  return out;
+}
+// Tag each row with `front`, computed per (facet, runtime) — a frontier is a
+// property of one runtime inside one panel, never of the pooled scatter.
+export function withPareto(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = JSON.stringify([r.facet ?? null, r.runtime]);
+    (groups.get(k) ?? groups.set(k, []).get(k)).push(r);
+  }
+  const front = new Set();
+  for (const g of groups.values()) for (const r of paretoFront(g)) front.add(r);
+  return rows.map((r) => ({ ...r, front: front.has(r) }));
+}
+
+// Wide plots must scroll, not shrink: Framework caps an <svg> at 100% of its
+// container, which silently rescales a five-panel facet grid until its tick
+// labels are illegible. A min-width inner box hands the svg its real width back
+// and moves the overflow to a scrollbar.
+const PER_FACET = 260;
+export const scrollWrap = (node, width) =>
+  html`<div style="overflow-x:auto;max-width:100%"><div style="min-width:${width}px">${node}</div></div>`;
+const plotWidth = (nF) => (nF > 1 ? 96 + nF * PER_FACET : 760);
+// A value for a tooltip: thousands-grouped rather than exponential (7.767e+5 is
+// not a number anyone recognizes as an RSS), with the contract's unit attached.
+const valueText = (v, metric, absolute) => {
+  if (v == null) return "?";
+  const n = Math.abs(v) >= 1e4 ? Math.round(v).toLocaleString("en-US") : (+v).toPrecision(4);
+  const u = absolute ? metricUnit(metric) : "× best";
+  return u ? `${n} ${u}` : n;
+};
+
+export function tradeoffChart(rows, { xMetric, yMetric, traceDim, facetDim, xLabel, yLabel, pareto = true, dark = false, absolute = true }) {
+  const series = [...new Set(rows.map((r) => r.runtime))];
+  const nF = facetDim ? new Set(rows.map((r) => r.facet)).size || 1 : 1;
+  const surface = dark ? SURFACE.dark : SURFACE.light;
+  const ink = dark ? INK.dark : INK.light;
+  const front = rows.filter((r) => r.front);
+  const fx = facetDim ? "facet" : null;
+  const tick = (m) => (Math.max(...rows.map((r) => (m === "x" ? r.x : r.y))) >= 1e4 ? "~s" : undefined);
+  const title = (d) =>
+    [d.runtime, d.params || null, `${metricLabel(xMetric)} = ${valueText(d.x, xMetric, absolute)}`,
+     `${metricLabel(yMetric)} = ${valueText(d.y, yMetric, absolute)}`,
+     d.front ? "on the Pareto frontier" : null].filter(Boolean).join("\n");
+  const plot = Plot.plot({
+    // Extra headroom: the y-axis caption and (when faceted) the panel headers
+    // both live in the top margin, and 12px puts them on top of the first tick.
+    marginLeft: 72, marginBottom: 46, marginTop: nF > 1 ? 40 : 26,
+    width: plotWidth(nF),
+    height: nF > 1 ? 340 : 420,
+    grid: true,
+    x: { label: xLabel ?? tradeoffAxis(xMetric), nice: true, tickFormat: tick("x") },
+    y: { label: yLabel ?? tradeoffAxis(yMetric), zero: false, nice: true, tickFormat: tick("y") },
+    fx: facetDim ? { label: facetDim } : undefined,
+    color: { domain: series, range: seriesRange(series.length, dark) },
+    // Symbol repeats the series identity so the scatter never depends on hue
+    // alone; the legend is drawn from this scale, filled by the color scale.
+    symbol: { domain: series, legend: series.length > 1, label: "runtime" },
+    marks: [
+      // The trace: faint, so it orders the points without competing with them.
+      Plot.line(rows, { x: "x", y: "y", z: "z", fx, stroke: "runtime", strokeWidth: 1.5, strokeOpacity: 0.35, curve: "linear" }),
+      pareto ? Plot.line(front, { x: "x", y: "y", z: "runtime", fx, stroke: "runtime", strokeWidth: 2, strokeDasharray: "5 3", curve: "step-after", sort: "x" }) : null,
+      // 2px surface ring keeps overlapping points readable where the two
+      // runtimes' clouds intersect.
+      Plot.dot(rows, { x: "x", y: "y", fx, fill: "runtime", symbol: "runtime", r: 4.5, stroke: surface, strokeWidth: 1.5 }),
+      pareto ? Plot.dot(front, { x: "x", y: "y", fx, fill: "runtime", symbol: "runtime", r: 7, stroke: surface, strokeWidth: 1.5 }) : null,
+      // Direct labels on each frontier's anchors only (ends + knee), offset
+      // up-right into the empty side of a descending frontier.
+      traceDim && pareto ? Plot.text(anchorPoints(front), { x: "x", y: "y", fx, text: (d) => paramFmt(d.trace), dx: 7, dy: -8, textAnchor: "start", fill: ink, fontSize: 10 }) : null,
+      // Invisible 24px hit target: the visible dot is 9px, which is a pinpoint to
+      // aim at. Plot's pointer transform picks the nearest one.
+      Plot.dot(rows, { x: "x", y: "y", fx, r: 12, fillOpacity: 0, stroke: "none", tip: { format: { x: null, y: null, fx: null } }, title }),
+    ].filter(Boolean),
+  });
+  return nF > 1 ? scrollWrap(plot, plotWidth(nF)) : plot;
+}
+
+// Frontier as a table: the accessible twin of the chart, and the answer to "so
+// which parameters do I actually set?". Ordered by the space axis, so it reads
+// along the frontier from the cheapest configuration to the fastest.
+export function paretoTable(rows, { xMetric, yMetric, bench }) {
+  const abs = bench !== ALL_BENCHES;
+  const unit = (m) => (abs ? (metricUnit(m) ?? "") : "× best");
+  const data = rows.filter((r) => r.front)
+    .map((r) => ({ runtime: r.runtime, parameters: r.params, space: r.x, time: r.y }))
+    .sort((a, b) => a.space - b.space);
+  const num = (v) => (v == null ? "" : Math.abs(v) >= 1e4 ? Math.round(v).toLocaleString("en-US") : (+v).toPrecision(4));
+  return Inputs.table(data, {
+    header: { space: `${metricLabel(xMetric)} (${unit(xMetric)})`, time: `${metricLabel(yMetric)} (${unit(yMetric)})` },
+    format: { space: num, time: num },
+    // The parameter set is the payload of this table; it must not be ellipsized.
+    width: { runtime: 170, parameters: 300 },
+  });
+}
+
+// ---- Δ space vs Δ time (the cost/benefit quadrant) --------------------------
+// Same idea, expressed as a comparison: for every parameter point present in
+// BOTH runtimes, how much space the variant costs and how much time it saves.
+// Lower-left = better on both; the off-diagonal quadrants are the real tradeoffs.
+export const QUADRANTS = [
+  { name: "better on both", color: STATUS.improvement },
+  { name: "space ↑ / time ↓", color: STATUS.warn },
+  { name: "space ↓ / time ↑", color: STATUS.neutral },
+  { name: "worse on both", color: STATUS.regression },
+];
+const quadrant = (dx, dy) => (dx <= 0 && dy <= 0 ? "better on both" : dx > 0 && dy > 0 ? "worse on both" : dx > 0 ? "space ↑ / time ↓" : "space ↓ / time ↑");
+
+export function tradeoffDeltaRows({ val, configs, xMetric, yMetric, baseSel, varSel, traceDim, facetDim, sweepDims = [] }) {
+  const key = (c) => JSON.stringify(Object.entries(c.dimensions ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+  const baseAt = new Map(resolve(configs, baseSel).map((c) => [key(c), c]));
+  const ex = [...sweepDims, ...constantDims(configs)];
+  const rows = [];
+  for (const v of resolve(configs, varSel)) {
+    const b = baseAt.get(key(v));
+    if (!b) continue;
+    const vx = val(v.config_id, xMetric), bx = val(b.config_id, xMetric);
+    const vy = val(v.config_id, yMetric), by = val(b.config_id, yMetric);
+    if (vx == null || !bx || vy == null || !by) continue;
+    const dx = (vx / bx - 1) * 100, dy = (vy / by - 1) * 100;
+    rows.push({
+      dx, dy, quadrant: quadrant(dx, dy), runtime: label(v, ex),
+      trace: traceDim ? numericish(v.dimensions?.[traceDim]) : null,
+      facet: facetDim ? v.dimensions?.[facetDim] : null,
+      // Same rule as tradeoffRows: a trace line may only join points that differ
+      // in the traced parameter alone, or an unpinned second parameter turns the
+      // quadrant into spaghetti.
+      z: label(v, [traceDim].filter(Boolean)),
+      params: dimText(v, sweepDims),
+    });
+  }
+  return rows.sort((a, b) => cmpVal(a.trace, b.trace));
+}
+
+export function tradeoffDeltaChart(rows, { xMetric, yMetric, traceDim, facetDim, dark = false }) {
+  const nF = facetDim ? new Set(rows.map((r) => r.facet)).size || 1 : 1;
+  const surface = dark ? SURFACE.dark : SURFACE.light;
+  const ink = dark ? INK.dark : INK.light;
+  const fx = facetDim ? "facet" : null;
+  const used = QUADRANTS.filter((q) => rows.some((r) => r.quadrant === q.name));
+  const pct = (v) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+  const plot = Plot.plot({
+    marginLeft: 72, marginBottom: 46, marginTop: nF > 1 ? 40 : 26,
+    width: plotWidth(nF),
+    height: nF > 1 ? 340 : 420,
+    grid: true,
+    x: { label: `Δ ${metricLabel(xMetric)} — space cost (%)`, tickFormat: "+.0f", nice: true },
+    y: { label: `Δ ${metricLabel(yMetric)} — time cost (%)`, tickFormat: "+.0f", nice: true },
+    fx: facetDim ? { label: facetDim } : undefined,
+    color: { domain: used.map((q) => q.name), range: used.map((q) => q.color), legend: true, label: "quadrant (vs baseline)" },
+    symbol: { domain: [...new Set(rows.map((r) => r.runtime))] },
+    marks: [
+      Plot.ruleX([0]), Plot.ruleY([0]),
+      Plot.line(rows, { x: "dx", y: "dy", z: "z", fx, stroke: ink, strokeOpacity: 0.2, strokeWidth: 1.5, sort: "trace" }),
+      Plot.dot(rows, { x: "dx", y: "dy", fx, fill: "quadrant", symbol: "runtime", r: 5, stroke: surface, strokeWidth: 1.5 }),
+      // Label each trace's two ends — enough to read the direction the traced
+      // parameter pushes a point, without a number on all 25.
+      traceDim ? Plot.text(anchorPoints(rows, { key: (r) => JSON.stringify([r.facet ?? null, r.z]), x: (r) => r.dx, y: (r) => r.dy }),
+        { x: "dx", y: "dy", fx, text: (d) => paramFmt(d.trace), dx: 7, dy: -8, textAnchor: "start", fill: ink, fontSize: 10 }) : null,
+      Plot.dot(rows, { x: "dx", y: "dy", fx, r: 12, fillOpacity: 0, stroke: "none", tip: { format: { x: null, y: null, fx: null } },
+        title: (d) => [d.runtime, d.params || null, `Δ ${metricLabel(xMetric)} ${pct(d.dx)}`, `Δ ${metricLabel(yMetric)} ${pct(d.dy)}`, d.quadrant].filter(Boolean).join("\n") }),
+    ].filter(Boolean),
+  });
+  return nF > 1 ? scrollWrap(plot, plotWidth(nF)) : plot;
 }
 
 export { html };

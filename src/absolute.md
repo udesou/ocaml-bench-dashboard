@@ -25,6 +25,7 @@ import * as B from "./components/bench.js";
 ```js
 const cell = B.index(measurements);
 const benches = B.benchmarksOf(measurements);
+const ALL_BENCHES = "All benchmarks";
 const configs = manifest.configs ?? [];
 const cmps = B.comparisons(manifest);
 ```
@@ -33,8 +34,17 @@ Pick the configs to show — a runtime plus a value for each swept parameter
 (`space_overhead`, `minor_heap`, `gc_plan`, …); **+ Add** another for more series.
 
 ```js
-const metric = view(Inputs.select(B.METRICS.map((m) => m.name), {
+const metric = view(Inputs.select(B.ALL_METRICS.map((m) => m.name), {
   label: "Metric", value: "wall_time", format: B.metricLabel,
+}));
+```
+
+Leave **Benchmark** on *All benchmarks* for the whole suite, or pick one to see
+just that benchmark across the selected configs.
+
+```js
+const benchPick = view(Inputs.select([ALL_BENCHES, ...benches], {
+  label: "Benchmark", value: ALL_BENCHES,
 }));
 ```
 
@@ -46,7 +56,8 @@ const shown = view(B.configPicker(configs, {
 ```
 
 ```js
-const rows = B.absoluteRows({ cell, benches, configs: shown, metric });
+const shownBenches = benchPick === ALL_BENCHES ? benches : [benchPick];
+const rows = B.absoluteRows({ cell, benches: shownBenches, configs: shown, metric });
 display(rows.length
   ? B.absoluteChart(rows, metric)
   : html`<div class="card"><p><em>No data for ${B.metricLabel(metric)}.</em></p></div>`);
@@ -61,4 +72,4 @@ display(Inputs.table(
 
 ---
 
-*See also [Overview](./index), [Parameter sweeps](./sweep).*
+*See also [Overview](./index), [Parameter sweeps](./sweep), [Space × time tradeoff](./tradeoff).*

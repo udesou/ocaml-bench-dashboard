@@ -129,17 +129,22 @@ a new tag (e.g. `:mmtk-plan-sweep`) to share a different experiment.
 
 ## What you see
 
-Four pages (sidebar nav):
+Five pages (sidebar nav):
 
 - **Overview (regression)** — one section per comparison declared in the run's
   manifest (e.g. *“5.5.0-rc1 vs 5.4.1”*): a per-benchmark Δ bar chart (green =
   faster, red = regression) + a table. A **metric selector** switches what's
   compared (instructions, wall time, max RSS, GC overhead, …).
-- **GC & runtime** — Δ of GC/runtime metrics (overhead, collections, promotion),
-  which explain *why* wall time moved.
 - **Absolute values** — raw per-benchmark medians per runtime (no baseline).
 - **Parameter sweeps** — heatmap of a metric across two swept GC parameters
   (e.g. `minor_heap` × `space_overhead`), for sweep runs.
+- **Sweep curves** — one metric's response to one swept parameter, a line per
+  runtime, optionally faceted by a second parameter.
+- **Space × time tradeoff** — a space metric against a time metric, one point per
+  configuration, with each runtime's **Pareto frontier**; plus a cost/benefit
+  quadrant of Δspace vs Δtime per parameter point. Parameters can be traced,
+  faceted, pinned or left open, and a `★ all benchmarks` mode aggregates the
+  suite (per-benchmark normalized geomean over a balanced benchmark set).
 
 The charts are [Observable Plot](https://observablehq.com/plot/) calls in `src/`
 (shared helpers in `src/components/bench.js`) — edit those to change or add views.
@@ -167,7 +172,8 @@ running-ng run ──▶ contract artifacts ──▶ ingestor ──▶ dashboa
 lib/schema/        the data contract: types (contract.ml) + registries (registry.ml)
 tools/             gen_schema.ml / gen_vocab.ml  → schema/json/{*.schema.json, vocab.json}
 ingest/            contract-only ingestor (validate + merge)
-src/               the dashboard: index.md (overview), gc.md, absolute.md, sweep.md
+src/               the dashboard: index.md (overview), absolute.md, sweep.md,
+                   curves.md, tradeoff.md
 src/components/    bench.js — shared data + chart helpers used by the pages
 scripts/adapt.sh   producer step: native contract as-is, else `running adapt` → ./contract
 test/smoke.ml      round-trip / validation sanity check

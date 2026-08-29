@@ -9,6 +9,7 @@ import * as B from "./components/bench.js";
 ```js
 const cell = B.index(measurements);
 const benches = B.benchmarksOf(measurements);
+const ALL_BENCHES = "All benchmarks";
 const configs = manifest.configs ?? [];
 const cmps = B.comparisons(manifest);
 ```
@@ -64,8 +65,11 @@ but any pair works (e.g. LXR vs Bactrian, or trunk vs the PR at a chosen
 `(s, o)`). Negative Δ is better; thresholds ±1% warn, ±3% regression/improvement.
 
 ```js
-const metric = view(Inputs.select(B.METRICS.map((m) => m.name), {
+const metric = view(Inputs.select(B.ALL_METRICS.map((m) => m.name), {
   label: "Metric", value: "instructions", format: B.metricLabel,
+}));
+const benchPick = view(Inputs.select([ALL_BENCHES, ...benches], {
+  label: "Benchmark", value: ALL_BENCHES,
 }));
 const dflt = B.defaultPick(configs, cmps);
 ```
@@ -91,9 +95,9 @@ display((() => {
   const rows = B.interRows(
     { kind: "inter", baseline: { config_id: baseline.config_id },
       variants: [{ config_id: variant.config_id }] },
-    { cell, benches, configs, metric });
+    { cell, benches: benchPick === ALL_BENCHES ? benches : [benchPick], configs, metric });
   if (!rows.length)
-    return html`<div class="card"><p><em>No overlapping data for ${B.metricLabel(metric)} between these configs.</em></p></div>`;
+    return html`<div class="card"><p><em>No overlapping data for ${B.metricLabel(metric)}${benchPick === ALL_BENCHES ? "" : ` on ${benchPick}`} between these configs.</em></p></div>`;
   const nImp = rows.filter((r) => r.verdict === "improvement").length;
   const nReg = rows.filter((r) => r.verdict === "regression").length;
   return html`<div>
@@ -109,4 +113,4 @@ display((() => {
 
 *This page renders the manifest's declared `comparisons`. See also
 [Absolute values](./absolute), and
-[Parameter sweeps](./sweep). Charts are Observable Plot in `src/` — edit freely.*
+[Parameter sweeps](./sweep), and [Space × time tradeoff](./tradeoff). Charts are Observable Plot in `src/` — edit freely.*

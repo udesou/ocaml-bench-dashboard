@@ -40,7 +40,7 @@ display(dims.length === 0
 // When nothing was swept there is no curve to draw — render no controls at all,
 // only the explanatory note above.
 const bench = dims.length ? view(Inputs.select(benches, { label: "Benchmark" })) : null;
-const metric = dims.length ? view(Inputs.select(B.METRICS.map((m) => m.name), { label: "Metric (y)", value: "max_rss", format: B.metricLabel })) : null;
+const metric = dims.length ? view(Inputs.select(B.ALL_METRICS.map((m) => m.name), { label: "Metric (y)", value: "max_rss", format: B.metricLabel })) : null;
 const xDim = dims.length ? view(Inputs.select(dims, { label: "Parameter (x)", value: dims[0] })) : null;
 // The facet is optional; "(none)" draws a single panel with all runtimes overlaid.
 const facetDim = dims.length ? view(Inputs.select(["(none)", ...dims.filter((d) => d !== xDim)], { label: "Facet by", value: "(none)" })) : null;
@@ -71,4 +71,4 @@ display((() => {
 
 ---
 
-*See also [Overview](./index), [Absolute values](./absolute), [Parameter sweeps](./sweep).*
+*See also [Overview](./index), [Absolute values](./absolute), [Parameter sweeps](./sweep), [Space × time tradeoff](./tradeoff).*
