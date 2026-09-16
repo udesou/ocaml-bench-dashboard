@@ -3,6 +3,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "cpu_kinds": {
+      "default": [],
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "sockets": { "default": null, "type": [ "integer", "null" ] },
+    "numa_nodes": { "default": null, "type": [ "integer", "null" ] },
+    "threads_per_core": { "default": null, "type": [ "integer", "null" ] },
+    "physical_cores": { "default": null, "type": [ "integer", "null" ] },
+    "cpu_isolation": { "default": null, "type": [ "string", "null" ] },
     "turbo": { "default": null, "type": [ "boolean", "null" ] },
     "isolcpus": { "default": null, "type": [ "string", "null" ] },
     "governor": { "default": null, "type": [ "string", "null" ] },
