@@ -44,6 +44,17 @@ let str_map_of_yojson : Yojson.Safe.t -> (str_map, string) result = function
       with Exit -> Error "str_map: expected string values")
   | _ -> Error "str_map: expected object"
 
+(** A string->int map serialized as a JSON object (machine.cpu_kinds). *)
+type int_map = (string * int) list
+
+let int_map_to_yojson (m : int_map) : Yojson.Safe.t =
+  `Assoc (List.map (fun (k, v) -> (k, `Int v)) m)
+let int_map_of_yojson : Yojson.Safe.t -> (int_map, string) result = function
+  | `Assoc l -> (
+      try Ok (List.map (function k, `Int v -> (k, v) | _ -> raise Exit) l)
+      with Exit -> Error "int_map: expected integer values")
+  | _ -> Error "int_map: expected object"
+
 (** A comparison selector: field path -> required value, e.g.
     {"runtime.version": "5.4.1", "space_overhead": 80}. *)
 type selector = (string * json) list
@@ -62,6 +73,10 @@ let str_map_jsonschema : Yojson.Safe.t =
   `Assoc
     [ ("type", `String "object");
       ("additionalProperties", `Assoc [ ("type", `String "string") ]) ]
+let int_map_jsonschema : Yojson.Safe.t =
+  `Assoc
+    [ ("type", `String "object");
+      ("additionalProperties", `Assoc [ ("type", `String "integer") ]) ]
 let selector_jsonschema : Yojson.Safe.t = `Assoc [ ("type", `String "object") ]
 
 (* ------------------------------------------------------------------ *)
@@ -148,6 +163,16 @@ type machine = {
   governor : string option; [@default None]
   isolcpus : string option; [@default None]
   turbo : bool option; [@default None]
+  (* Topology provenance. Two results from the same cpu_model are not
+     comparable if one ran on a hybrid part's E-cores or spanned sockets, and
+     nothing else in the manifest would show it. All optional: a producer fills
+     in as far as its platform allows and stays silent about the rest. *)
+  cpu_isolation : string option; [@default None]  (* isolcpus|irqaffinity|topology|none *)
+  physical_cores : int option; [@default None]
+  threads_per_core : int option; [@default None]
+  numa_nodes : int option; [@default None]
+  sockets : int option; [@default None]
+  cpu_kinds : int_map; [@default []]              (* e.g. {"P": 8, "E": 16} *)
 }
 [@@deriving yojson, jsonschema]
 
