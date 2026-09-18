@@ -76,6 +76,29 @@ short and current. `README.md` is the human overview; the authoritative spec is
   Both run `scripts/adapt.sh` first (the adapter → `./contract`); loaders then run
   the contract-only ingestor. `BENCH_RUN_DIR` selects the legacy run to adapt.
 
+### Packaging a run for someone else
+
+`scripts/package-image.sh` builds `dist/` for `$BENCH_RUN_DIR` and wraps it in an
+nginx image tagged by run name. By hand that is `npm run build` then
+`docker build --build-arg RUN_LABEL=<run> -t ocaml-bench-dashboard:<run> .`.
+Two ways to hand it over:
+
+```sh
+# registry (GHCR; one-time: a GitHub PAT with write:packages)
+echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
+docker tag  ocaml-bench-dashboard:<run> ghcr.io/<owner>/ocaml-bench-dashboard:<run>
+docker push ghcr.io/<owner>/ocaml-bench-dashboard:<run>
+# recipient: docker run --rm -p 8080:80 ghcr.io/<owner>/ocaml-bench-dashboard:<run>
+#   (docker login ghcr.io only if the package is private)
+
+# tarball (no registry)
+docker save ocaml-bench-dashboard:<run> | gzip > dashboard-<run>.tar.gz
+# recipient: docker load < dashboard-<run>.tar.gz && docker run --rm -p 8080:80 ...
+```
+
+Visibility and access are managed under the org or user's **Packages** tab on
+GitHub. Docker Hub works the same way (`docker.io/<user>/...`).
+
 ## Gotchas (hard-won — don't rediscover)
 
 - **OxCaml overlay repos were removed from the switch.** They served `+ox`
