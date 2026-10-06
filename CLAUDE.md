@@ -35,6 +35,16 @@ short and current. `README.md` is the human overview; the authoritative spec is
 - **`config_id` is a delimiter-joined canonical string, not JSON** (registry.ml),
   so OCaml and Python reproduce it bit-for-bit. Changing the recipe breaks joins
   across producers — bump it deliberately and regenerate `vocab.json` + `vocab.py`.
+- **Human-facing docs are written by a human.** `README.md` and every other
+  `.md` file except this one are maintained by hand. When a change calls for a
+  docs update, do not edit the prose. Put an invisible HTML comment next to the
+  passage that needs to change, saying what changed and what the text should
+  now say: `<!-- TODO(docs): ... -->` (it does not render). When a PR is being
+  prepared, list every such comment so they can be resolved by hand before
+  merge: `grep -rn 'TODO(docs)' --include='*.md' .`
+- **Comments only where the code is not self-explanatory.** Never add a comment
+  that restates the code. Where one is needed, keep it short and explain the
+  intent or the non-obvious constraint at a high level, for a human reader.
 
 ## Where things live (read first)
 

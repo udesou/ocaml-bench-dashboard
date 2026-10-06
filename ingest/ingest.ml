@@ -1,17 +1,9 @@
-(* ingest.ml — the CONTRACT-ONLY ingestor (boundary ③).
+(* Contract-only ingestor: validates a contract directory (manifest.json plus
+   measurements/*.ndjson) and re-emits canonical JSON for the data loaders.
+   Knows nothing about the legacy run layout; that lives in the adapter.
 
-   Consumes ONLY data-contract artifacts (a directory with manifest.json and
-   measurements.json, as produced by the adapter or, later, by running-ng
-   natively). It has NO knowledge of the legacy on-disk layout — that lives
-   entirely in the adapter.
-
-   Its job is the read-side validation gate: parse, check the schema version,
-   validate every record against the contract, and re-emit canonical contract
-   JSON for downstream (the Observable data loaders). A non-conforming artifact
-   fails loud (non-zero exit) rather than flowing through.
-
-     ingest measurements <contract-dir>   -> validated Contract.measurement array
-     ingest manifest     <contract-dir>   -> validated Contract.manifest
+     ingest measurements <contract-dir>
+     ingest manifest     <contract-dir>
 *)
 
 open Schema
@@ -40,8 +32,7 @@ let fail_invalid what e =
   Printf.eprintf "FATAL: %s failed contract validation: %s\n%!" what e;
   exit 1
 
-(* recursively collect *.ndjson under a directory (any nesting is allowed; the
-   path is never parsed for meaning) *)
+(* any nesting is allowed; the path is never parsed for meaning *)
 let rec ndjson_files dir =
   if not (Sys.file_exists dir) then []
   else
@@ -65,8 +56,7 @@ let identity (m : Contract.measurement) =
   String.concat "\x1f"
     [ m.run_id; m.config.config_id; m.benchmark.name; m.benchmark.suite; string_of_int m.invocation ]
 
-(* merge a per-tool partial into an existing record of the same identity:
-   union metrics (report a same-name clash across tools, keep first) + raw_ref *)
+(* per-tool partials of one identity: union metrics, first wins on a name clash *)
 let merge (prev : Contract.measurement) (m : Contract.measurement) : Contract.measurement =
   let prev_names = List.map (fun (x : Contract.metric) -> x.name) prev.metrics in
   let new_metrics =
@@ -83,7 +73,6 @@ let merge (prev : Contract.measurement) (m : Contract.measurement) : Contract.me
   { prev with metrics = prev.metrics @ new_metrics; raw_ref = prev.raw_ref @ new_raw }
 
 let ingest_measurements dir =
-  (* referential integrity needs the manifest's config set *)
   let man =
     match Contract.manifest_of_yojson (read_json (Filename.concat dir "manifest.json")) with
     | Ok m -> check_version m.Contract.schema_version; m
@@ -92,7 +81,6 @@ let ingest_measurements dir =
   let known_configs = List.map (fun (c : Contract.config_descriptor) -> c.config_id) man.configs in
   let files = ndjson_files (Filename.concat dir "measurements") in
   if files = [] then fail_invalid "measurements/" "no *.ndjson files found";
-  (* parse + validate + version-gate every record *)
   let records =
     List.concat_map
       (fun path ->
@@ -111,7 +99,6 @@ let ingest_measurements dir =
           (read_lines path))
       files
   in
-  (* merge partials by identity, preserving first-seen order *)
   let tbl = Hashtbl.create 4096 and order = ref [] in
   List.iter
     (fun m ->

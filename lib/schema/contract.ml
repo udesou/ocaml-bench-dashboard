@@ -1,32 +1,17 @@
-(** Benchmarking data contract — canonical OCaml types.
-
-    OCaml is the source of truth (see docs/DATA_CONTRACT.md, decision §10.1); a
-    JSON Schema is generated from these types for non-OCaml consumers such as the
-    Python running-ng validator.
-
-    Every artifact type here has [to_yojson] / [of_yojson] (via
-    ppx_deriving_yojson). [of_yojson] doubles as the validator: a record that
-    does not parse is not conformant.
-
-    Open/flexible parts of the contract — [dimensions], [selector], string maps —
-    are represented as JSON objects with hand-written converters so the wire
-    shape is exactly `{ "space_overhead": 80, … }` rather than a derived
-    encoding. This is deliberate: the wire format *is* the contract. *)
+(** Canonical types of the benchmarking data contract (docs/DATA_CONTRACT.md);
+    schema/json is generated from them and [of_yojson] is the validator. The
+    open parts (dimensions, selector, string maps) use hand-written converters
+    so the wire shape is a plain JSON object, not a derived encoding. *)
 
 let schema_version = "1.0"
-
-(* ------------------------------------------------------------------ *)
-(* Flexible JSON building blocks (exact object encodings)              *)
-(* ------------------------------------------------------------------ *)
 
 type json = Yojson.Safe.t
 
 let json_to_yojson (j : json) : Yojson.Safe.t = j
 let json_of_yojson (j : Yojson.Safe.t) : (json, string) result = Ok j
 
-(** An open map of axis name -> scalar value, e.g. {"space_overhead": 80}. The
-    single place GC/sweep dimensions live — replaces the reader's hardwired
-    KNOWN_GC_PARAMS. *)
+(** Open map of axis name -> scalar, e.g. {"space_overhead": 80}; the only
+    place sweep dimensions live. *)
 type dimensions = (string * json) list
 
 let dimensions_to_yojson (d : dimensions) : Yojson.Safe.t = `Assoc d
@@ -55,7 +40,7 @@ let int_map_of_yojson : Yojson.Safe.t -> (int_map, string) result = function
       with Exit -> Error "int_map: expected integer values")
   | _ -> Error "int_map: expected object"
 
-(** A comparison selector: field path -> required value, e.g.
+(** Comparison selector: field path -> required value, e.g.
     {"runtime.version": "5.4.1", "space_overhead": 80}. *)
 type selector = (string * json) list
 
@@ -63,9 +48,8 @@ let selector_to_yojson (s : selector) : Yojson.Safe.t = `Assoc s
 let selector_of_yojson : Yojson.Safe.t -> (selector, string) result =
   function `Assoc l -> Ok l | _ -> Error "selector: expected object"
 
-(* JSON Schema fragments for the hand-written flex types. ppx_deriving_jsonschema
-   resolves a field of type [t] by referencing [t_jsonschema], so these make the
-   generated schema complete without the deriver understanding our encodings. *)
+(* ppx_deriving_jsonschema references [t_jsonschema] for a field of type [t];
+   these complete the generated schema for the hand-written encodings. *)
 let json_jsonschema : Yojson.Safe.t = `Assoc []  (* {} = any *)
 let dimensions_jsonschema : Yojson.Safe.t =
   `Assoc [ ("type", `String "object") ]
@@ -79,38 +63,34 @@ let int_map_jsonschema : Yojson.Safe.t =
       ("additionalProperties", `Assoc [ ("type", `String "integer") ]) ]
 let selector_jsonschema : Yojson.Safe.t = `Assoc [ ("type", `String "object") ]
 
-(* ------------------------------------------------------------------ *)
-(* Config descriptor (§4.2) — identity of HOW a benchmark was run      *)
-(* ------------------------------------------------------------------ *)
+(* Config descriptor, DATA_CONTRACT.md §4.2 *)
 
 type runtime = {
   kind : string;                         (* "OCaml" | "OxCaml" | "OCamlMMTk" *)
-  version : string;                      (* explicit — never peeled off a name *)
+  version : string;                      (* never derived from a runtime name *)
   commit : string option; [@default None]
   options : string list; [@default []]   (* ["frame-pointers"; "flambda"] *)
 }
 [@@deriving yojson, jsonschema]
 
 type config_descriptor = {
-  config_id : string;                    (* canonical hash of the normative fields *)
+  config_id : string;                    (* see Registry.canonical_config_id *)
   runtime : runtime;
   dimensions : dimensions; [@default []]
   tools : string list; [@default []]
-  (* advisory provenance — running-ng spellings; consumers must not depend on these *)
+  (* advisory running-ng spellings; consumers must not depend on these *)
   runtime_name : string option; [@key "_runtime_name"] [@jsonschema.key "_runtime_name"] [@default None]
   modifiers : string list; [@key "_modifiers"] [@jsonschema.key "_modifiers"] [@default []]
 }
 [@@deriving yojson, jsonschema]
 
-(* ------------------------------------------------------------------ *)
-(* Measurement record (§4.3) — one per invocation, the linchpin        *)
-(* ------------------------------------------------------------------ *)
+(* Measurement record (one per invocation), DATA_CONTRACT.md §4.3 *)
 
 type metric = {
   name : string;
   value : float;
   unit_ : string; [@key "unit"] [@jsonschema.key "unit"]
-  source : string;                       (* tool provenance: "olly" | "perf" | … *)
+  source : string;                       (* "olly" | "perf" | … *)
   layer : int;                           (* 1 user-visible | 2 GC | 3 hardware *)
 }
 [@@deriving yojson, jsonschema]
@@ -125,7 +105,7 @@ type benchmark_ref = {
 type config_ref = { config_id : string } [@@deriving yojson, jsonschema]
 
 type measurement = {
-  schema_version : string;  (* mandatory: always emitted, required on parse *)
+  schema_version : string;
   run_id : string;
   benchmark : benchmark_ref;
   config : config_ref;
@@ -135,9 +115,7 @@ type measurement = {
 }
 [@@deriving yojson, jsonschema]
 
-(* ------------------------------------------------------------------ *)
-(* Comparison declaration (§4.5) — inter / intra / both                *)
-(* ------------------------------------------------------------------ *)
+(* Comparison declaration, DATA_CONTRACT.md §4.5 *)
 
 type comparison = {
   kind : string;                         (* "inter" | "intra" | "both" *)
@@ -151,9 +129,7 @@ type comparison = {
 }
 [@@deriving yojson, jsonschema]
 
-(* ------------------------------------------------------------------ *)
-(* Run manifest (§4.4) — one per run                                   *)
-(* ------------------------------------------------------------------ *)
+(* Run manifest (one per run), DATA_CONTRACT.md §4.4 *)
 
 type machine = {
   hostname : string;
@@ -163,10 +139,8 @@ type machine = {
   governor : string option; [@default None]
   isolcpus : string option; [@default None]
   turbo : bool option; [@default None]
-  (* Topology provenance. Two results from the same cpu_model are not
-     comparable if one ran on a hybrid part's E-cores or spanned sockets, and
-     nothing else in the manifest would show it. All optional: a producer fills
-     in as far as its platform allows and stays silent about the rest. *)
+  (* Topology: results from the same cpu_model are not comparable if one ran on
+     E-cores or spanned sockets, and nothing else in the manifest shows it. *)
   cpu_isolation : string option; [@default None]  (* isolcpus|irqaffinity|topology|none *)
   physical_cores : int option; [@default None]
   threads_per_core : int option; [@default None]
@@ -177,7 +151,7 @@ type machine = {
 [@@deriving yojson, jsonschema]
 
 type manifest = {
-  schema_version : string;  (* mandatory: always emitted, required on parse *)
+  schema_version : string;
   run_id : string;
   created_at : string;                   (* ISO-8601 *)
   machine : machine;
@@ -185,16 +159,12 @@ type manifest = {
   configs : config_descriptor list; [@default []]
   comparisons : comparison list; [@default []]
   benchmarks : benchmark_ref list; [@default []]
-  (* advisory provenance — how these artifacts were produced, e.g.
-     "running-ng 1.3 (native)" or "adapter 0.1 (from legacy)". Lets a consumer
-     tell natively-emitted data from adapted data. *)
+  (* advisory, e.g. "running-ng 1.3 (native)" or "adapter 0.1 (from legacy)" *)
   produced_by : string option; [@key "_produced_by"] [@jsonschema.key "_produced_by"] [@default None]
 }
 [@@deriving yojson, jsonschema]
 
-(* ------------------------------------------------------------------ *)
-(* Benchmark registry entry (§4.1) — identity of a workload            *)
-(* ------------------------------------------------------------------ *)
+(* Benchmark registry entry, DATA_CONTRACT.md §4.1 *)
 
 type benchmark_entry = {
   name : string;

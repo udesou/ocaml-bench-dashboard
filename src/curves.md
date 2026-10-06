@@ -22,9 +22,7 @@ const cell = B.index(measurements);
 const benches = B.benchmarksOf(measurements);
 const configs = manifest.configs ?? [];
 const cmps = B.comparisons(manifest).filter((c) => !c.kind || c.kind === "inter");
-// Only dimensions that actually vary can be a curve's x axis or facet. Comparison
-// axes (e.g. gc_plan, used to pick LXR/Bactrian) are NOT sweep parameters, so
-// exclude them — a plan comparison must not masquerade as a swept curve.
+// Comparison axes (e.g. gc_plan) select a runtime, not a sweep; exclude them.
 const cmpDims = B.comparisonDims(cmps);
 const dims = B.varyingDims(configs).map((d) => d.dim).filter((d) => !cmpDims.includes(d));
 ```
@@ -37,19 +35,14 @@ display(dims.length === 0
 ```
 
 ```js
-// When nothing was swept there is no curve to draw — render no controls at all,
-// only the explanatory note above.
 const bench = dims.length ? view(Inputs.select(benches, { label: "Benchmark" })) : null;
 const metric = dims.length ? view(Inputs.select(B.ALL_METRICS.map((m) => m.name), { label: "Metric (y)", value: "max_rss", format: B.metricLabel })) : null;
 const xDim = dims.length ? view(Inputs.select(dims, { label: "Parameter (x)", value: dims[0] })) : null;
-// The facet is optional; "(none)" draws a single panel with all runtimes overlaid.
 const facetDim = dims.length ? view(Inputs.select(["(none)", ...dims.filter((d) => d !== xDim)], { label: "Facet by", value: "(none)" })) : null;
 ```
 
 ```js
-// Pin any remaining varying dimensions (not x, not the facet) so each x point
-// maps to a single config per runtime — otherwise several configs collapse onto
-// the same x and the line becomes meaningless.
+// Pin the other varying dimensions so each x maps to one config per runtime.
 const pins = dims.length ? view(B.dimPinsInput(configs, [xDim, facetDim].filter((d) => d && d !== "(none)"))) : {};
 ```
 

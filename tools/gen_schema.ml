@@ -1,14 +1,9 @@
-(* Generate JSON Schema files from the canonical OCaml contract types
-   (DATA_CONTRACT §10.1). Run: `dune exec tools/gen_schema.exe -- schema/json`.
+(* Generate schema/json/*.json from the contract types:
+   `dune exec tools/gen_schema.exe -- schema/json`.
+   ppx_deriving_jsonschema marks every non-option field `required`, but the
+   `[@default []]` collections below are dropped from the wire when empty, so
+   they are removed from `required` at every nesting level (objects are inlined). *)
 
-   Structure/properties/types come straight from ppx_deriving_jsonschema, so they
-   can never drift from the OCaml types. One correction is applied: the deriver
-   marks every non-`option` field `required`, but our collection fields carry
-   `[@default []]` and are optional on the wire (ppx_deriving_yojson drops them
-   when empty). So we recursively remove those field names from every `required`
-   array — at every nesting level, since objects are inlined not referenced. *)
-
-(* Fields that are optional on the wire everywhere they appear. *)
 let always_optional =
   [ "tags"; "options"; "tools"; "_modifiers"; "dimensions"; "raw_ref";
     "configs"; "comparisons"; "benchmarks"; "tool_versions"; "args" ]

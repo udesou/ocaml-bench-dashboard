@@ -1,15 +1,6 @@
-(** The two "one place to touch when extending" tables (DATA_CONTRACT §6), plus
-    the canonical [config_id] derivation.
-
-    - [dimension_of_modifier] replaces the reader's hardwired KNOWN_GC_PARAMS:
-      add a row here to teach the pipeline a new sweep axis.
-    - [olly_field_map] / [perf_event_map] / [metric_catalog] are the raw->canonical
-      metric mapping: add a row to surface a new metric (e.g. future olly
-      fragmentation stats) with NO schema change — see DATA_CONTRACT §7. *)
-
-(* ------------------------------------------------------------------ *)
-(* Modifier name -> (dimension key, unit)                              *)
-(* ------------------------------------------------------------------ *)
+(** Extension tables (DATA_CONTRACT.md §6, §7) and the canonical [config_id]
+    derivation. A new sweep axis is a row in [dimension_of_modifier]; a new
+    metric is a row in the metric maps. Neither needs a schema change. *)
 
 let dimension_of_modifier : (string * (string * string)) list =
   [
@@ -19,20 +10,16 @@ let dimension_of_modifier : (string * (string * string)) list =
     ("m", ("custom_minor_ratio", "pct"));
     ("re", ("runtime_events_ring_log2", "log2_words"));
     ("md", ("max_domains", "count"));
-    (* lavyek-scoped variants map to the SAME axes *)
+    (* lavyek-scoped variants share the axes *)
     ("re_par", ("runtime_events_ring_log2", "log2_words"));
     ("md_par", ("max_domains", "count"));
-    (* MMTk: GC plan + GC-worker-thread count. Name-value modifiers
-       (plan-Bactrian, threads-1) so configs differing only by MMTK_PLAN /
-       MMTK_THREADS get distinct config_ids and plot as separate series. *)
+    (* MMTk name-value modifiers (plan-Bactrian, threads-1), so configs differing
+       only by MMTK_PLAN / MMTK_THREADS get distinct config_ids *)
     ("plan", ("gc_plan", "name"));
     ("threads", ("gc_threads", "count"));
   ]
 
-(* ------------------------------------------------------------------ *)
-(* Canonical metric catalog: name -> (unit, layer, source)             *)
-(* layer: 1 user-visible | 2 GC/runtime | 3 hardware  (roadmap Metrics) *)
-(* ------------------------------------------------------------------ *)
+(* name -> (unit, layer, source); layer 1 user-visible, 2 GC/runtime, 3 hardware *)
 
 let metric_catalog : (string * (string * int * string)) list =
   [
@@ -78,35 +65,12 @@ let perf_event_map : (string * string) list =
     ("task-clock", "task_clock");
   ]
 
-(* ------------------------------------------------------------------ *)
-(* Source-tool compatibility (the bridge to external tools)            *)
-(*                                                                     *)
-(* Three DISTINCT version concepts — keep them apart:                  *)
-(*   - Contract.schema_version : our canonical artifact contract       *)
-(*   - manifest.tool_versions  : the ACTUAL tool binary versions,      *)
-(*       recorded uniformly by the runner via `<tool> --version`       *)
-(*       (provenance, one entry per tool, every run)                   *)
-(*   - tool_supported_versions : the tool versions the maps above are  *)
-(*       written against (below)                                       *)
-(*                                                                     *)
-(* Ingestion compares each recorded binary version against the         *)
-(* supported set here, uniformly for every tool, and FAILS LOUD on an  *)
-(* unsupported one rather than silently misparsing. Field-presence     *)
-(* checks back this up (a metric named in a map but absent from the     *)
-(* raw output is reported, never a silent null).                       *)
-(*                                                                     *)
-(* Breaking tool change: update the map(s), bump the entry here, and — *)
-(* ONLY if it changes canonical metric names/units/semantics — bump    *)
-(* Contract.schema_version. Otherwise it is absorbed here and consumers *)
-(* never see it.                                                        *)
-(* ------------------------------------------------------------------ *)
+(* A breaking tool change updates the maps above and this table; bump
+   Contract.schema_version only if canonical metric names/units/semantics change. *)
 
-(** Supported *release* version prefixes per tool, matched (prefix) against the
-    versions the runner records via `<tool> --version` in manifest.tool_versions.
-
-    These are the tools' RELEASE versions — olly 0.5.x (runtime_events_tools),
-    perf 6.x — NOT olly's self-stamped JSON output "version" field, which is a
-    separate, coarser format version (see [olly_output_version_supported]). *)
+(** Release-version prefixes (olly 0.5.x, perf 6.x) matched against the
+    `<tool> --version` strings in manifest.tool_versions; ingest fails loudly on
+    an unsupported one. Not olly's JSON "version" ([olly_output_version_supported]). *)
 let tool_supported_versions : (string * string list) list =
   [ ("olly", [ "0.5" ]); ("perf", [ "6" ]) ]
 
@@ -118,34 +82,14 @@ let tool_supported (tool : string) (version : string) : bool =
   | Some prefixes -> List.exists has_prefix prefixes
   | None -> false
 
-(** Distinct from the release version above: olly self-stamps its JSON *output*
-    with a top-level integer "version" — the format version of the gc-stats JSON,
-    independent of the 0.5.x release number. The adapter checks this against the
-    set below; the uniform guard is the release version.
-
-    Both 1 and 2 are supported. Version 2 (olly `9e5b2d6`, "Don't crash on pauses
-    greater than 10sec") added an [outliers] block for pauses beyond the
-    histogram's range and made [max_latency] account for them; it changed no
-    field that [olly_field_map] reads, so the maps above parse either version.
-    Listing only 1 meant every run against a current olly tripped the adapter's
-    "metrics may be misparsed" warning while in fact parsing correctly. *)
+(** olly's self-stamped JSON output "version" (format version, independent of
+    the release). 2 (olly 9e5b2d6) only added an [outliers] block, so both
+    parse with [olly_field_map]. *)
 let olly_output_version_supported : int list = [ 1; 2 ]
 
-(* ------------------------------------------------------------------ *)
-(* Canonical config_id (DATA_CONTRACT §4.2 / §8)                       *)
-(* A content hash of the NORMATIVE fields only, so two conforming       *)
-(* runners produce the same id for the same config -> data is joinable. *)
-(* ------------------------------------------------------------------ *)
-
-(* config_id canonicalization — deliberately a delimiter-joined string, NOT a
-   JSON serialization, so any language reproduces it bit-identically without
-   matching a JSON library's spacing/key-order/escaping quirks. The exact recipe
-   is exported in vocab.json (config_id block) for non-OCaml producers.
-
-   canonical = kind ⟨FS⟩ version ⟨FS⟩ (commit|"") ⟨FS⟩
-               join(sorted(options), ",") ⟨FS⟩
-               join(sorted("k=v" for each dimension), ",")
-   where FS = US (0x1f); config_id = "cfg_" ^ md5_hex(canonical). *)
+(* config_id (DATA_CONTRACT.md §8): hash of the normative fields only, as a
+   US-joined string rather than JSON so any language reproduces it bit-identically;
+   the recipe is exported in vocab.json (config_id block). *)
 let config_id_field_sep = "\x1f"
 let config_id_list_sep = ","
 let config_id_prefix = "cfg_"

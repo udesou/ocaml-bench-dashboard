@@ -28,8 +28,7 @@ import * as B from "./components/bench.js";
 ```
 
 ```js
-// Series colors are picked per surface (they are validated against each), so the
-// charts re-render when the theme flips.
+// Series colors are validated per surface, so charts re-render on theme flip.
 const dark = Generators.dark();
 ```
 
@@ -38,9 +37,8 @@ const cell = B.index(measurements);
 const benches = B.benchmarksOf(measurements);
 const configs = manifest.configs ?? [];
 const cmps = B.comparisons(manifest).filter((c) => !c.kind || c.kind === "inter");
-// Swept parameters only: a comparison axis (e.g. gc_plan, used to select
-// LXR/Bactrian) identifies a runtime, so it is a series here, not a parameter to
-// trace along.
+// A comparison axis (e.g. gc_plan) identifies a runtime: a series here, not a
+// parameter to trace along.
 const cmpDims = B.comparisonDims(cmps);
 const dims = B.varyingDims(configs).map((d) => d.dim).filter((d) => !cmpDims.includes(d));
 ```
@@ -56,9 +54,7 @@ const yMetric = view(Inputs.select(["wall_time", "cpu_time", "gc_time", "gc_over
 ```
 
 ```js
-// The traced parameter orders the points into a curve; the rest can be faceted
-// into small multiples, or left as "(all)" to put every candidate point in one
-// panel — unpinned parameters are extra frontier candidates, not noise.
+// Unpinned parameters are extra frontier candidates, not noise.
 const traceDim = view(Inputs.select(["(none)", ...dims], { label: "Trace along", value: dims[0] ?? "(none)" }));
 ```
 
@@ -99,9 +95,8 @@ display((() => {
   if (!rows.length) return html`<div class="card"><p><em>No data for that selection.</em></p></div>`;
   const nSeries = new Set(rows.map((r) => r.runtime)).size;
   const chart = B.tradeoffChart(rows, { xMetric, yMetric, traceDim: trace, facetDim: facet, xLabel, yLabel, pareto: showPareto, dark, absolute: bench !== B.ALL_BENCHES });
-  // Every series in a scatter is adjacent to every other, so past three the hues
-  // stop being separable under color-vision deficiency; symbol + label encoding
-  // still carries identity, but a facet or a pin is the better fix.
+  // Past three adjacent series, hue stops being separable under color-vision
+  // deficiency; symbols and labels still carry identity.
   return nSeries > 3
     ? html`<div>${chart}<p><small><em>${nSeries} series in one panel — hue alone is no longer reliable at this count (symbols and the table below still identify them). Facet or pin a dimension to get back to ≤ 3.</em></small></p></div>`
     : chart;

@@ -16,8 +16,6 @@ const cmps = B.comparisons(manifest);
 
 ```js
 const mach = manifest.machine ?? {};
-// Every machine field the contract carries, in a sensible order; only the ones
-// actually recorded for this run are shown (legacy runs may only have a host).
 const machineFields = [
   ["Host", mach.hostname],
   ["CPU", mach.cpu_model],

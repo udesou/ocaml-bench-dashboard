@@ -1,16 +1,13 @@
-// Shared helpers for the dashboard pages. Pure contract consumption: everything
-// here reads the ingestor's output (measurement records + the run manifest).
+// Shared helpers for the dashboard pages; everything reads the ingestor's
+// output (measurement records + run manifest).
 import * as Plot from "npm:@observablehq/plot";
 import * as Inputs from "npm:@observablehq/inputs";
 import {html} from "npm:htl";
 
-// Status palette (fixed, colorblind-checked). Lower is better for all our
-// metrics, so negative Δ = improvement (green).
+// Lower is better for every metric, so negative Δ is an improvement (green).
 export const STATUS = { improvement: "#0ca30c", neutral: "#8a8a86", warn: "#fab219", regression: "#d03b3b" };
 const statusDomain = ["improvement", "neutral", "warn", "regression"];
 
-// Metrics offered in the selectors (name -> label/unit). `lowerBetter` is true
-// for all of these; kept explicit in case a "higher is better" metric appears.
 export const METRICS = [
   { name: "instructions", label: "Instructions", unit: "count" },
   { name: "wall_time", label: "Wall time", unit: "s" },
@@ -22,10 +19,8 @@ export const METRICS = [
   { name: "minor_collections", label: "Minor collections", unit: "count" },
   { name: "promoted_pct", label: "Promoted", unit: "%" },
 ];
-// Rest of the contract's metric catalog (registry.ml). Kept out of METRICS so the
-// existing pages' selectors are unchanged, but nameable everywhere: the
-// space/time page offers memory-footprint and hardware metrics that the Δ and
-// heatmap pages have no use for.
+// Rest of the contract catalog (registry.ml), kept out of METRICS so the short
+// selectors stay unchanged.
 export const MORE_METRICS = [
   { name: "major_words", label: "Major heap words", unit: "words" },
   { name: "minor_words", label: "Minor words", unit: "words" },
@@ -34,18 +29,14 @@ export const MORE_METRICS = [
   { name: "cycles", label: "Cycles", unit: "count" },
   { name: "task_clock", label: "Task clock", unit: "ns" },
 ];
-// Every metric in the contract catalog. Selectors that should offer the full
-// set (overview Δ, absolute values) use this; METRICS alone is the short list.
 export const ALL_METRICS = [...METRICS, ...MORE_METRICS];
 export const GC_METRICS = ["gc_overhead", "gc_time", "major_collections", "minor_collections", "promoted_pct"];
 export const metricLabel = (name) => ALL_METRICS.find((m) => m.name === name)?.label ?? name;
 export const metricUnit = (name) => ALL_METRICS.find((m) => m.name === name)?.unit ?? null;
 
-// Categorical series palette, one entry per light/dark surface. Fixed order,
-// never cycled: slot 0 is always the first series. These three steps are
-// validated for all-pairs use (scatter — every series is adjacent to every
-// other) on both surfaces; slots 3+ are only gate-safe for adjacent forms, so a
-// scatter with more than three series also carries symbol + label encoding.
+// Series palette, fixed order, never cycled. Slots 0-2 are validated for
+// all-pairs (scatter) use on both surfaces; slots 3+ only for adjacent forms,
+// so a scatter with more than three series also carries symbol + label encoding.
 export const SERIES_LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7", "#008300", "#e34948"];
 export const SERIES_DARK = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9", "#008300", "#e66767"];
 export const SURFACE = { light: "#fcfcfb", dark: "#1a1a19" };
@@ -75,15 +66,12 @@ export const median = (xs) => {
 };
 const cellGet = (cell, bench, cid, name) => cell.get(bench + "\u0000" + cid)?.[name] ?? [];
 
-// ---- config / selector resolution (contract §4.5) --------------------------
+// ---- config / selector resolution (DATA_CONTRACT.md §4.5) ------------------
 function cfgField(c, k) {
   if (k === "config_id") return c.config_id;
   if (k === "_runtime_name") return c._runtime_name;
-  // A config with no build options omits `options` entirely; normalize to [] so a
-  // selector that pins `runtime.options: []` (a STOCK build) matches it — and does
-  // NOT match a same-version variant that has options. Without this, an
-  // empty-options baseline selector is under-specified and collapses onto every
-  // variant of that version (fp / flambda / fp-flambda).
+  // Normalize missing options to [] so a selector pinning `runtime.options: []`
+  // (a stock build) matches it and not the same-version fp/flambda variants.
   if (k === "runtime.options") return c.runtime?.options ?? [];
   if (k.startsWith("runtime.")) return c.runtime?.[k.slice("runtime.".length)];
   return c.dimensions?.[k];
@@ -91,33 +79,24 @@ function cfgField(c, k) {
 const matchesSel = (c, sel) => Object.entries(sel).every(([k, v]) => JSON.stringify(cfgField(c, k)) === JSON.stringify(v));
 export const resolve = (configs, sel) => (sel ? configs.filter((c) => matchesSel(c, sel)) : []);
 
-// Baseline configs of an inter comparison, with the variant-matched configs
-// removed. Baseline and variants are DISJOINT runtimes by definition, but a
-// baseline selector can be under-specified — e.g. a stock build whose selector
-// is {runtime.version: X} with no options, which then also matches that
-// version's fp / flambda variants. Subtracting the variant matches restores the
-// intended baseline even when the contract's selector is imprecise.
+// Baseline configs minus any matched by a variant selector: a baseline selector
+// without options would otherwise also match that version's fp/flambda variants.
 export function baselineConfigs(configs, cmp) {
   const varIds = new Set((cmp.variants ?? []).flatMap((s) => resolve(configs, s)).map((c) => c.config_id));
   return resolve(configs, cmp.baseline ?? {}).filter((c) => !varIds.has(c.config_id));
 }
 const stripVersion = (v) => (v ?? "").replace(/^(ocaml|oxcaml)-/, "");
 
-// A runtime's DISPLAY identity. Configs that share runtime.version but differ by
-// build options (e.g. --enable-frame-pointers / --enable-flambda) are DISTINCT
-// runtimes and must not collapse to one "5.5.0". The ingestor's _runtime_name
-// (e.g. "ocaml-5.5.0-fp-flambda") already encodes those variant suffixes, so we
-// prefer it; otherwise we synthesize version+options.
+// Display identity. Same version with different build options is a distinct
+// runtime; _runtime_name (e.g. "ocaml-5.5.0-fp-flambda") already encodes that.
 export const runtimeId = (c) => {
   if (c._runtime_name != null) return stripVersion(c._runtime_name);
   const v = stripVersion(c.runtime?.version) || c.config_id.slice(0, 10);
   const o = (c.runtime?.options ?? []).map((x) => x.replace(/^--enable-/, "")).join(",");
   return o ? `${v} [${o}]` : v;
 };
-// A normative config selector that isolates exactly this runtime, matched via
-// cfgField. version + options + commit is the same identity config_id is derived
-// from; options is pinned ALWAYS (even []) so a stock build isn't matched by its
-// own optioned variants.
+// Selector isolating exactly this runtime. options is pinned even when [] so a
+// stock build is not matched by its own optioned variants.
 export const runtimeSelector = (c) => {
   const sel = { "runtime.version": c.runtime?.version, "runtime.options": c.runtime?.options ?? [] };
   if (c.runtime?.commit != null) sel["runtime.commit"] = c.runtime.commit;
@@ -125,12 +104,8 @@ export const runtimeSelector = (c) => {
 };
 
 export const label = (c, exclude = []) => {
-  // display only — the underlying config_id / selectors use the full values.
-  // Include dimensions so configs of the SAME runtime that differ only by a
-  // dimension (e.g. gc_plan=Bactrian vs LXR) are distinct series rather than
-  // collapsing to one label. `exclude` drops dimensions that are an axis of the
-  // current view (a swept x/y) or constant across it — otherwise every point of
-  // a sweep would be its own series.
+  // Display only. Dimensions keep same-runtime configs (e.g. gc_plan=Bactrian vs
+  // LXR) distinct; `exclude` drops the view's axes and constant dimensions.
   const base = runtimeId(c);
   const d = Object.entries(c.dimensions ?? {})
     .filter(([k]) => !exclude.includes(k))
@@ -146,40 +121,28 @@ export const dimensionKeys = (configs) => {
   for (const c of configs) for (const k of Object.keys(c.dimensions ?? {})) s.add(k);
   return [...s];
 };
-// Dimensions that DON'T vary across the given configs (single value or absent).
-// Used to drop them from a sweep's series label — they add no distinction.
 export const constantDims = (configs) => {
   const varying = new Set(varyingDims(configs).map((d) => d.dim));
   return dimensionKeys(configs).filter((k) => !varying.has(k));
 };
 
 // ---- swept-dimension handling ----------------------------------------------
-// A "runtime" that appears many times in a sweep is the SAME runtime under
-// different GC parameters. These helpers let a page pin those parameters to
-// specific values so the comparison collapses to one config per runtime.
 const cmpVal = (a, b) =>
   typeof a === "number" && typeof b === "number" ? a - b
   : String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 
-// The value standing for "this config does not carry that dimension at all".
-// A run that sweeps a modifier ON and OFF (e.g. the glibc MALLOC_* thresholds:
-// set, vs left to glibc's own dynamic adjustment, which no env var can express)
-// produces configs where the dimension is PRESENT on one half and ABSENT on the
-// other. Absent is a real, selectable setting, not missing data — so it gets a
-// sentinel and appears in the dropdowns like any other value.
+// Sentinel for "this config does not carry the dimension". An on/off sweep (e.g.
+// glibc MALLOC_* thresholds set vs left to glibc) has the dimension on one half
+// only; absent is a selectable setting, not missing data.
 export const DIM_ABSENT = "\u0000absent";
 export const dimValueLabel = (v) => (v === DIM_ABSENT ? "(default)" : String(v));
-// The value to PLOT for dimension `k` of config `c`: absent becomes the readable
-// "(default)" category rather than undefined, so the half of a with/without run
-// that lacks the dimension is drawn instead of silently dropped. Identity and
-// filtering use DIM_ABSENT; only display uses this.
+// Plot value: absent draws as "(default)" instead of being dropped. Identity and
+// filtering use DIM_ABSENT.
 export const dimAxisValue = (c, k) =>
   (c.dimensions?.[k] === undefined ? dimValueLabel(DIM_ABSENT) : c.dimensions[k]);
 
-// Dimensions that actually VARY across the run, each with its sorted distinct
-// values. A dimension varies if it takes >1 value OR if some configs carry it
-// and others don't (then DIM_ABSENT is one of its values). Dimensions with
-// nothing to choose are omitted — they never appear in a dropdown.
+// A dimension varies if it takes more than one value or if only some configs
+// carry it (DIM_ABSENT is then one of its values).
 export function varyingDims(configs) {
   const seen = new Map(); // dim -> Map(json -> value)
   for (const c of configs)
@@ -195,16 +158,11 @@ export function varyingDims(configs) {
     .map(([dim, m]) => ({ dim, values: [...m.values()].sort(cmpVal) }));
 }
 
-// Keep configs whose dimensions match every pinned value (pins: {dim: value}).
-// A null/undefined pin means "any". A config that LACKS a pinned dimension (e.g.
-// a stock baseline with no gc_plan) is cross-cutting and always kept — only a
-// config that HAS the dimension with a different value is dropped.
+// Keep configs matching every pinned value (pins: {dim: value}); a null pin
+// means any.
 export function filterByDims(configs, pins) {
   const ps = Object.entries(pins ?? {}).filter(([, v]) => v != null);
   if (!ps.length) return configs;
-  // Which dimensions each runtime's configs carry at all — decides whether a
-  // config that LACKS a pinned dimension is cross-cutting or is the "off" half
-  // of a with/without sweep.
   const carried = new Map();
   for (const c of configs) {
     const r = runtimeId(c);
@@ -213,21 +171,17 @@ export function filterByDims(configs, pins) {
   }
   return configs.filter((c) => ps.every(([k, v]) => {
     const has = c.dimensions?.[k] !== undefined;
-    // Pinning DIM_ABSENT selects exactly the configs WITHOUT that dimension —
-    // the "modifier off" half of a with/without run.
     if (String(v) === DIM_ABSENT) return !has;
     if (has) return JSON.stringify(c.dimensions[k]) === JSON.stringify(v);
-    // Lacks it: cross-cutting only if NO config of the SAME runtime carries it
-    // — that's the stock-baseline-vs-gc_plan case, which must survive the pin.
-    // If this runtime does carry it elsewhere, this config is the other half of
-    // an on/off axis and pinning a value must exclude it.
+    // Lacks it: cross-cutting (kept) only if no config of the same runtime carries
+    // it, e.g. a stock baseline with no gc_plan; otherwise it is the off half of
+    // an on/off axis and a pinned value must exclude it.
     return !carried.get(runtimeId(c))?.has(k);
   }));
 }
 
-// Dimension keys a comparison uses as baseline/variant selectors — these are the
-// comparison's OWN axes, so they must not also be offered as collapsing pins
-// (pinning them would hide the other variants / drop the baseline).
+// Dimension keys used by comparison selectors; they must not be offered as pins
+// (that would hide variants or drop the baseline).
 export function comparisonDims(cmps) {
   const s = new Set();
   for (const cmp of cmps ?? [])
@@ -237,15 +191,9 @@ export function comparisonDims(cmps) {
   return [...s];
 }
 
-// Build an <Inputs.form> with one <select> per varying dimension (minus any in
-// `exclude`); its value is a {dim: value} pins object. Empty form when nothing
-// varies. Requires Inputs (imported below).
-//
-// `allowAll` adds an "(all)" choice (value null, which filterByDims reads as
-// "any") and makes it the default. A heatmap or a curve NEEDS every remaining
-// parameter pinned — one config per cell / per x point — but a scatter of
-// (space, time) does not: leaving a parameter unpinned there is the whole point,
-// since every extra parameter value is another candidate point on the frontier.
+// One <select> per varying dimension; value is a {dim: value} pins object.
+// `allowAll` adds a default "(all)" (null) choice: a heatmap or curve needs every
+// remaining parameter pinned, a (space, time) scatter wants them as candidates.
 export function dimPinsInput(configs, exclude = [], { allowAll = false } = {}) {
   const vd = varyingDims(configs).filter((d) => !exclude.includes(d.dim));
   if (!vd.length) return Inputs.form({});
@@ -258,9 +206,6 @@ export function dimPinsInput(configs, exclude = [], { allowAll = false } = {}) {
   );
 }
 
-// Default {baseline, variants:[...]} configs for the interactive picker: resolve
-// the first declared inter comparison to concrete configs; fall back to
-// configs[0] as baseline and the rest as variants.
 export function defaultCompare(configs, cmps) {
   const cmp = (cmps ?? []).find((c) => !c.kind || c.kind === "inter");
   if (cmp) {
@@ -272,10 +217,8 @@ export function defaultCompare(configs, cmps) {
   return { baseline, variants: configs.filter((c) => c !== baseline) };
 }
 
-// Default single-config pick for the interactive picker: one baseline config and
-// one variant per declared-comparison variant selector, chosen to share the
-// baseline's dimensions where possible (so a sweep defaults to one matched pair,
-// not the whole grid).
+// One baseline and one variant per variant selector, preferring a variant with
+// the baseline's dimensions so a sweep defaults to a matched pair, not the grid.
 export function defaultPick(configs, cmps) {
   const cmp = (cmps ?? []).find((c) => !c.kind || c.kind === "inter");
   if (cmp) {
@@ -294,16 +237,11 @@ export function defaultPick(configs, cmps) {
   return { baseline, variants: v ? [v] : [] };
 }
 
-// A dependency-free custom input: choose a config by runtime + one value per
-// varying dimension (dimension options cascade off the chosen runtime, so a
-// runtime that lacks a dimension — e.g. stock has no gc_plan — simply omits it,
-// and only real configs are selectable). When `multiple`, renders a growable
-// list of such rows with "+ Add" / "×"; its .value is the array of chosen
-// configs. Otherwise a single row whose .value is one config (or null). Emits an
-// "input" event so Framework's view() tracks it.
+// Custom input: a config by runtime plus one value per varying dimension, with
+// dimension options cascading off the runtime so only real configs are
+// selectable. `multiple` gives a growable list (.value is an array). Emits
+// "input" so Framework's view() tracks it.
 export function configPicker(configs, { multiple = false, value = null } = {}) {
-  // Runtime identity = version + build options (see runtimeId), so fp / flambda
-  // variants of the same version are separately selectable instead of collapsing.
   const runtimes = [...new Set(configs.map((c) => runtimeId(c)))];
   const vdims = varyingDims(configs).map((d) => d.dim);
 
@@ -315,8 +253,6 @@ export function configPicker(configs, { multiple = false, value = null } = {}) {
       if (c.dimensions?.[dim] === undefined) anyAbsent = true;
       else m.set(JSON.stringify(c.dimensions[dim]), c.dimensions[dim]);
     }
-    // "(default)" is offered whenever this runtime has configs without the
-    // dimension, so a with/without sweep is selectable on both sides.
     if (anyAbsent) m.set(JSON.stringify(DIM_ABSENT), DIM_ABSENT);
     return [...m.values()].sort(cmpVal);
   };
@@ -328,8 +264,7 @@ export function configPicker(configs, { multiple = false, value = null } = {}) {
         : String(c.dimensions?.[k]) === String(v)))) ?? null;
   const toInit = (cfg) => ({
     runtime: cfg ? runtimeId(cfg) : undefined,
-    // A config that lacks a varying dimension is pinned to "(default)", not to
-    // undefined — otherwise it would match the other half of the run too.
+    // DIM_ABSENT, not undefined, or it would also match the other half of the run.
     dims: Object.fromEntries(vdims.map((d) => [d,
       cfg ? (cfg.dimensions?.[d] === undefined ? DIM_ABSENT : cfg.dimensions[d]) : undefined])),
   });
@@ -370,9 +305,8 @@ export function configPicker(configs, { multiple = false, value = null } = {}) {
       dimBox.textContent = ""; row.dimSels = [];
       for (const d of vdims) {
         const vals = valuesFor(runtimeSel.value, d);
-        if (!vals.length) continue;                   // dim absent for this runtime
+        if (!vals.length) continue;
         const cur = init2?.dims?.[d] ?? vals[0];
-        // dimValueLabel so DIM_ABSENT reads as "(default)" instead of its sentinel.
         const s = sel(vals, cur, dimValueLabel);
         s.addEventListener("input", emit);
         dimBox.appendChild(field(d, s));
@@ -403,9 +337,7 @@ export function configPicker(configs, { multiple = false, value = null } = {}) {
     const add = document.createElement("button");
     add.type = "button"; add.className = "cfgpick-add"; add.textContent = "+ Add comparison";
     add.addEventListener("click", () => {
-      // Default the new row to a config that isn't already shown, so a distinct
-      // bar appears immediately (otherwise it duplicates an existing selection
-      // and nothing visibly changes until a dropdown is touched).
+      // default to a config not already shown so a distinct bar appears at once
       const used = new Set(rows.map(readRow).filter(Boolean).map((c) => c.config_id));
       const next = configs.find((c) => !used.has(c.config_id));
       addRow(next ? toInit(next) : null);
@@ -424,9 +356,6 @@ export function comparisons(manifest) {
   const configs = manifest.configs ?? [];
   let cs = manifest.comparisons ?? [];
   if (!cs.length && configs.length >= 2) {
-    // Distinct runtimes by identity (version + build options), NOT by version
-    // alone — otherwise fp / flambda variants of the same version collapse into
-    // one runtime and disappear from the comparison.
     const rts = [];
     const seen = new Set();
     for (const c of configs) {
@@ -434,8 +363,7 @@ export function comparisons(manifest) {
       if (!seen.has(id)) { seen.add(id); rts.push({ id, sel: runtimeSelector(c) }); }
     }
     if (rts.length >= 2) {
-      // multiple runtimes: compare them by runtime identity, so pinning swept
-      // dimensions narrows each side to the chosen point (not one fixed config).
+      // by runtime identity, so pinning swept dimensions narrows each side
       const base = rts.find((r) => /trunk/i.test(r.id)) ?? rts[0];
       cs = [{
         kind: "inter", over: "runtime",
@@ -461,9 +389,7 @@ export function comparisons(manifest) {
 export function interRows(cmp, { cell, benches, configs, metric }) {
   const baseCfgs = baselineConfigs(configs, cmp);
   const varCfgs = (cmp.variants ?? []).flatMap((s) => resolve(configs, s));
-  // Drop dimensions that are constant across the run from the variant label —
-  // they add no distinction (e.g. a fp/flambda-only run where every config
-  // shares the same GC dimensions), leaving a clean "5.5.0-fp" identity.
+  // constant dimensions add nothing to the variant label
   const ex = constantDims(configs);
   const rows = [];
   for (const v of varCfgs) {
@@ -498,9 +424,8 @@ export function deltaChart(rows, metric) {
   });
 }
 
-// Heading for a baseline-vs-variant comparison: prefer a compact "variant vs
-// baseline" by runtime identity (all dimensions dropped); if both are the same
-// runtime, fall back to distinguishing them by their varying dimensions.
+// "variant vs baseline" by runtime identity; same runtime on both sides falls
+// back to the varying dimensions.
 export function compareTitle(variant, baseline, configs) {
   const dk = dimensionKeys(configs);
   const rtOnly = (c) => label(c, dk);
@@ -518,7 +443,7 @@ export function deltaTable(rows) {
 
 // ---- absolute values (per benchmark × runtime) -----------------------------
 export function absoluteRows({ cell, benches, configs, metric }) {
-  const ex = constantDims(configs); // clean runtime label — see interRows
+  const ex = constantDims(configs);
   const rows = [];
   for (const c of configs)
     for (const bench of benches) {
@@ -545,9 +470,7 @@ export function absoluteChart(rows, metric) {
 
 // ---- parameter-sweep heatmap ------------------------------------------------
 export function sweepRows({ cell, configs, bench, metric, xDim, yDim }) {
-  // Series = runtime identity: exclude the two axes and anything constant in the
-  // (already pinned/filtered) set, so each runtime is ONE facet, not one facet
-  // per (x, y) point.
+  // series = runtime identity: one facet per runtime, not one per (x, y) point
   const ex = [xDim, yDim, ...constantDims(configs)];
   const rows = [];
   for (const c of configs) {
@@ -556,8 +479,6 @@ export function sweepRows({ cell, configs, bench, metric, xDim, yDim }) {
   }
   return rows;
 }
-// Geometry shared by the sweep heatmaps: aim for large, square-ish cells and
-// size the plot to the number of categories (× number of facet columns).
 const CELL = 62;
 function heatmapSize(rows, nFacets) {
   const nx = new Set(rows.map((r) => r.x)).size || 1;
@@ -570,9 +491,7 @@ function heatmapSize(rows, nFacets) {
 
 export function heatmap(rows, { metric, xDim, yDim }) {
   const nR = new Set(rows.map((r) => r.runtime)).size || 1;
-  // Cell text must stay readable across the whole YlGnBu ramp: light cells (low
-  // values, yellow) need dark text; dark cells (high values, deep blue) need
-  // light text. Pick per cell from the value's position in the data range.
+  // dark text on the light (low) end of YlGnBu, light text on the deep-blue end
   const vals = rows.map((r) => r.value).filter((v) => v != null);
   const lo = Math.min(...vals), hi = Math.max(...vals);
   const textFill = (d) => (d.value != null && hi > lo && (d.value - lo) / (hi - lo) > 0.55 ? "#fff" : "#111");
@@ -591,8 +510,7 @@ export function heatmap(rows, { metric, xDim, yDim }) {
 }
 
 // ---- inter-runtime Δ heatmap (variant vs baseline across the sweep) ---------
-// For each (x, y) cell present in BOTH runtimes, the % change of the variant
-// relative to the baseline. Negative = variant is better (green).
+// % change per (x, y) cell present in both runtimes; negative = variant better.
 export function sweepDeltaRows({ cell, configs, bench, metric, xDim, yDim, baseSel, varSel }) {
   const baseCfgs = resolve(configs, baseSel);
   const key = (c) => JSON.stringify([c.dimensions?.[xDim], c.dimensions?.[yDim]]);
@@ -625,16 +543,11 @@ export function deltaHeatmap(rows, { metric, xDim, yDim, baseLabel, varLabel }) 
 }
 
 // ---- metric-vs-parameter curves --------------------------------------------
-// The response of a metric (y) to one swept parameter (x), drawn as one line
-// per runtime — the shape used in ocaml/ocaml#14796 to show how RSS / GC
-// overhead track a target as the `o` (space_overhead) parameter varies. An
-// optional facet dimension turns it into a small-multiples grid (as in that
-// PR's off × ephe panels). Numeric x values are kept numeric so the line is
-// monotone in the parameter, not in insertion order.
+// One line per runtime, as in ocaml/ocaml#14796. Numeric x stays numeric so the
+// line is monotone in the parameter, not in insertion order.
 const numericish = (v) => (typeof v === "number" ? v : v != null && v !== "" && !isNaN(+v) ? +v : v);
 export function curveRows({ cell, configs, bench, metric, xDim, facetDim }) {
-  // Series = runtime identity: exclude the x axis, the facet, and anything
-  // constant in the (pinned/filtered) set, so each runtime is ONE line.
+  // series = runtime identity: one line per runtime
   const ex = [xDim, facetDim, ...constantDims(configs)].filter(Boolean);
   const rows = [];
   for (const c of configs) {
@@ -673,12 +586,6 @@ export function curveChart(rows, { metric, xDim, facetDim }) {
 }
 
 // ---- space × time tradeoff --------------------------------------------------
-// A GC parameter point buys time with memory, or memory with time; neither axis
-// is the "answer" on its own. So plot both: x = a space metric, y = a time
-// metric, one point per configuration, joined along the swept parameter. The
-// interesting configurations are the non-dominated ones — the Pareto frontier —
-// and the interesting comparison between two runtimes is whether one runtime's
-// whole frontier sits below/left of the other's.
 
 export const ALL_BENCHES = "★ all benchmarks (normalized)";
 export const geomean = (xs) => {
@@ -686,23 +593,10 @@ export const geomean = (xs) => {
   return a.length ? Math.exp(a.reduce((s, v) => s + Math.log(v), 0) / a.length) : null;
 };
 
-// One number per (config, metric): a single benchmark's median, or — for
-// ALL_BENCHES — the geometric mean over benchmarks of each benchmark's value
-// relative to the BEST (smallest) value any shown config reached on it.
-// Normalizing per benchmark is what makes a suite-level aggregate meaningful: a
-// 3 GiB benchmark must not swamp a 30 MiB one, and 1.0 on an axis then reads as
-// "as good as the best point in this view".
-//
-// The aggregate counts only benchmarks measured under EVERY shown config (a
-// balanced panel). A benchmark that ran under one runtime but not the other
-// (pplacer, in the 2026-07-18 sweep) would otherwise enter one side's geomean and
-// not the other's, so the two aggregates would summarize different suites — worth
-// ~1pp of phantom Δ in that run. With the panel balanced the per-benchmark
-// normalizer cancels exactly in a ratio, so a Δ of aggregates IS the geomean of
-// the per-benchmark Δs.
-//
-// Returns the accessor carrying `.benches` (aggregated) and `.dropped`
-// (excluded), so a page can caption the real count and disclose what it left out.
+// One number per (config, metric): a benchmark's median, or for ALL_BENCHES the
+// geomean over benchmarks of value / best shown value. Only benchmarks measured
+// under every shown config count; an unbalanced panel gives the two sides
+// different suites (~1pp of phantom Δ from pplacer in the 2026-07-18 sweep).
 export function valueTable({ cell, configs, benches, bench, metrics }) {
   const t = new Map(); // `${config_id}\0${metric}` -> number | null
   const key = (cid, m) => cid + "\u0000" + m;
@@ -725,19 +619,15 @@ export function valueTable({ cell, configs, benches, bench, metrics }) {
   return Object.assign(get, { benches: complete, dropped: benches.filter((b) => !complete.includes(b)) });
 }
 
-// Compact parameter value for a direct label: GC parameters are word counts in
-// the 10^5–10^6 range, and five raw digits per label is what turns a frontier
-// into a smudge.
+// GC parameters are 10^5..10^6 word counts; raw digits on every label smudge
+// the frontier.
 export const paramFmt = (v) => {
   if (typeof v !== "number" || Math.abs(v) < 1e4) return String(v);
   return v >= 1e6 ? +(v / 1e6).toFixed(v < 1e7 ? 1 : 0) + "M" : Math.round(v / 1e3) + "k";
 };
 
-// Which points earn a direct label: a number on every point is noise, so label
-// only each series' anchors — its cheapest-space end, its fastest end, and its
-// "knee" (the point nearest the ideal corner once both axes are normalized),
-// which is the compromise configuration a reader is usually looking for. Full
-// detail stays in the tooltip and the frontier table.
+// Each series' anchors: cheapest-space end, fastest end, and the knee (nearest
+// the ideal corner once both axes are normalized).
 export function anchorPoints(rows, { key = (r) => JSON.stringify([r.facet ?? null, r.runtime]), x = (r) => r.x, y = (r) => r.y } = {}) {
   if (!rows.length) return [];
   const xs = rows.map(x), ys = rows.map(y);
@@ -759,9 +649,7 @@ export function anchorPoints(rows, { key = (r) => JSON.stringify([r.facet ?? nul
   return [...out];
 }
 
-// Axis caption: absolute values carry the contract's unit; the aggregate is
-// unitless (a ratio to the best point in view), and saying so on the axis is the
-// only thing that keeps the two modes from being confused for each other.
+// The aggregate is unitless (ratio to the best point in view); say so on the axis.
 export function tradeoffAxis(metric, bench, nBenches) {
   if (bench === ALL_BENCHES) return `${metricLabel(metric)} (× best; geomean, n=${nBenches})`;
   const u = metricUnit(metric);
@@ -771,9 +659,7 @@ export function tradeoffAxis(metric, bench, nBenches) {
 const dimText = (c, dims) => (dims ?? []).filter((d) => c.dimensions?.[d] !== undefined).map((d) => `${d}=${c.dimensions[d]}`).join(", ");
 
 export function tradeoffRows({ val, configs, xMetric, yMetric, traceDim, facetDim, sweepDims = [] }) {
-  // Color identity = runtime, NOT parameter point: the swept parameters are
-  // already encoded by position along the trace, and letting them into the label
-  // would turn a 5 × 5 grid into 25 colors.
+  // color = runtime, not parameter point, or a 5 x 5 grid becomes 25 colors
   const ex = [...sweepDims, ...constantDims(configs)];
   const rows = [];
   for (const c of configs) {
@@ -784,9 +670,8 @@ export function tradeoffRows({ val, configs, xMetric, yMetric, traceDim, facetDi
       runtime: label(c, ex),
       trace: traceDim ? numericish(c.dimensions?.[traceDim]) : null,
       facet: facetDim ? c.dimensions?.[facetDim] : null,
-      // Line identity: same runtime AND the same value of every parameter other
-      // than the traced one. Without this, an unpinned second parameter joins
-      // points that differ in two dimensions at once — a zigzag, not a curve.
+      // line identity: same runtime and same value of every non-traced parameter,
+      // otherwise an unpinned second parameter turns the trace into a zigzag
       z: label(c, [traceDim].filter(Boolean)),
       params: dimText(c, sweepDims),
       config_id: c.config_id,
@@ -795,17 +680,15 @@ export function tradeoffRows({ val, configs, xMetric, yMetric, traceDim, facetDi
   return rows.sort((a, b) => cmpVal(a.trace, b.trace));
 }
 
-// Non-dominated points, both axes lower-is-better: sort by x, keep only the ones
-// that improve on the best y so far. Strict `<` also drops an equal-y point that
-// costs more x — it is dominated.
+// Non-dominated points, both axes lower-is-better. Strict `<` also drops an
+// equal-y point that costs more x.
 export function paretoFront(rows) {
   const out = [];
   let best = Infinity;
   for (const r of [...rows].sort((a, b) => a.x - b.x || a.y - b.y)) if (r.y < best) { out.push(r); best = r.y; }
   return out;
 }
-// Tag each row with `front`, computed per (facet, runtime) — a frontier is a
-// property of one runtime inside one panel, never of the pooled scatter.
+// `front` per (facet, runtime): a frontier belongs to one runtime in one panel.
 export function withPareto(rows) {
   const groups = new Map();
   for (const r of rows) {
@@ -817,16 +700,13 @@ export function withPareto(rows) {
   return rows.map((r) => ({ ...r, front: front.has(r) }));
 }
 
-// Wide plots must scroll, not shrink: Framework caps an <svg> at 100% of its
-// container, which silently rescales a five-panel facet grid until its tick
-// labels are illegible. A min-width inner box hands the svg its real width back
-// and moves the overflow to a scrollbar.
+// Framework caps an <svg> at 100% of its container, silently shrinking a wide
+// facet grid; a min-width inner box gives it its width back and scrolls instead.
 const PER_FACET = 260;
 export const scrollWrap = (node, width) =>
   html`<div style="overflow-x:auto;max-width:100%"><div style="min-width:${width}px">${node}</div></div>`;
 const plotWidth = (nF) => (nF > 1 ? 96 + nF * PER_FACET : 760);
-// A value for a tooltip: thousands-grouped rather than exponential (7.767e+5 is
-// not a number anyone recognizes as an RSS), with the contract's unit attached.
+// thousands-grouped, not exponential (7.767e+5 is not a recognizable RSS)
 const valueText = (v, metric, absolute) => {
   if (v == null) return "?";
   const n = Math.abs(v) >= 1e4 ? Math.round(v).toLocaleString("en-US") : (+v).toPrecision(4);
@@ -847,8 +727,7 @@ export function tradeoffChart(rows, { xMetric, yMetric, traceDim, facetDim, xLab
      `${metricLabel(yMetric)} = ${valueText(d.y, yMetric, absolute)}`,
      d.front ? "on the Pareto frontier" : null].filter(Boolean).join("\n");
   const plot = Plot.plot({
-    // Extra headroom: the y-axis caption and (when faceted) the panel headers
-    // both live in the top margin, and 12px puts them on top of the first tick.
+    // the y caption and facet headers share the top margin
     marginLeft: 72, marginBottom: 46, marginTop: nF > 1 ? 40 : 26,
     width: plotWidth(nF),
     height: nF > 1 ? 340 : 420,
@@ -857,31 +736,24 @@ export function tradeoffChart(rows, { xMetric, yMetric, traceDim, facetDim, xLab
     y: { label: yLabel ?? tradeoffAxis(yMetric), zero: false, nice: true, tickFormat: tick("y") },
     fx: facetDim ? { label: facetDim } : undefined,
     color: { domain: series, range: seriesRange(series.length, dark) },
-    // Symbol repeats the series identity so the scatter never depends on hue
-    // alone; the legend is drawn from this scale, filled by the color scale.
+    // symbol repeats the series identity so the scatter never depends on hue alone
     symbol: { domain: series, legend: series.length > 1, label: "runtime" },
     marks: [
-      // The trace: faint, so it orders the points without competing with them.
       Plot.line(rows, { x: "x", y: "y", z: "z", fx, stroke: "runtime", strokeWidth: 1.5, strokeOpacity: 0.35, curve: "linear" }),
       pareto ? Plot.line(front, { x: "x", y: "y", z: "runtime", fx, stroke: "runtime", strokeWidth: 2, strokeDasharray: "5 3", curve: "step-after", sort: "x" }) : null,
-      // 2px surface ring keeps overlapping points readable where the two
-      // runtimes' clouds intersect.
+      // surface-colored ring keeps overlapping points readable
       Plot.dot(rows, { x: "x", y: "y", fx, fill: "runtime", symbol: "runtime", r: 4.5, stroke: surface, strokeWidth: 1.5 }),
       pareto ? Plot.dot(front, { x: "x", y: "y", fx, fill: "runtime", symbol: "runtime", r: 7, stroke: surface, strokeWidth: 1.5 }) : null,
-      // Direct labels on each frontier's anchors only (ends + knee), offset
-      // up-right into the empty side of a descending frontier.
+      // anchors only, offset up-right into the empty side of a descending frontier
       traceDim && pareto ? Plot.text(anchorPoints(front), { x: "x", y: "y", fx, text: (d) => paramFmt(d.trace), dx: 7, dy: -8, textAnchor: "start", fill: ink, fontSize: 10 }) : null,
-      // Invisible 24px hit target: the visible dot is 9px, which is a pinpoint to
-      // aim at. Plot's pointer transform picks the nearest one.
+      // invisible 24px hit target; the visible dot is only 9px
       Plot.dot(rows, { x: "x", y: "y", fx, r: 12, fillOpacity: 0, stroke: "none", tip: { format: { x: null, y: null, fx: null } }, title }),
     ].filter(Boolean),
   });
   return nF > 1 ? scrollWrap(plot, plotWidth(nF)) : plot;
 }
 
-// Frontier as a table: the accessible twin of the chart, and the answer to "so
-// which parameters do I actually set?". Ordered by the space axis, so it reads
-// along the frontier from the cheapest configuration to the fastest.
+// Ordered by the space axis: reads along the frontier from cheapest to fastest.
 export function paretoTable(rows, { xMetric, yMetric, bench }) {
   const abs = bench !== ALL_BENCHES;
   const unit = (m) => (abs ? (metricUnit(m) ?? "") : "× best");
@@ -892,15 +764,13 @@ export function paretoTable(rows, { xMetric, yMetric, bench }) {
   return Inputs.table(data, {
     header: { space: `${metricLabel(xMetric)} (${unit(xMetric)})`, time: `${metricLabel(yMetric)} (${unit(yMetric)})` },
     format: { space: num, time: num },
-    // The parameter set is the payload of this table; it must not be ellipsized.
+    // the parameter set must not be ellipsized
     width: { runtime: 170, parameters: 300 },
   });
 }
 
 // ---- Δ space vs Δ time (the cost/benefit quadrant) --------------------------
-// Same idea, expressed as a comparison: for every parameter point present in
-// BOTH runtimes, how much space the variant costs and how much time it saves.
-// Lower-left = better on both; the off-diagonal quadrants are the real tradeoffs.
+// Per parameter point present in both runtimes; lower-left = better on both.
 export const QUADRANTS = [
   { name: "better on both", color: STATUS.improvement },
   { name: "space ↑ / time ↓", color: STATUS.warn },
@@ -925,9 +795,7 @@ export function tradeoffDeltaRows({ val, configs, xMetric, yMetric, baseSel, var
       dx, dy, quadrant: quadrant(dx, dy), runtime: label(v, ex),
       trace: traceDim ? numericish(v.dimensions?.[traceDim]) : null,
       facet: facetDim ? v.dimensions?.[facetDim] : null,
-      // Same rule as tradeoffRows: a trace line may only join points that differ
-      // in the traced parameter alone, or an unpinned second parameter turns the
-      // quadrant into spaghetti.
+      // same trace-identity rule as tradeoffRows
       z: label(v, [traceDim].filter(Boolean)),
       params: dimText(v, sweepDims),
     });
@@ -956,8 +824,7 @@ export function tradeoffDeltaChart(rows, { xMetric, yMetric, traceDim, facetDim,
       Plot.ruleX([0]), Plot.ruleY([0]),
       Plot.line(rows, { x: "dx", y: "dy", z: "z", fx, stroke: ink, strokeOpacity: 0.2, strokeWidth: 1.5, sort: "trace" }),
       Plot.dot(rows, { x: "dx", y: "dy", fx, fill: "quadrant", symbol: "runtime", r: 5, stroke: surface, strokeWidth: 1.5 }),
-      // Label each trace's two ends — enough to read the direction the traced
-      // parameter pushes a point, without a number on all 25.
+      // label each trace's ends only
       traceDim ? Plot.text(anchorPoints(rows, { key: (r) => JSON.stringify([r.facet ?? null, r.z]), x: (r) => r.dx, y: (r) => r.dy }),
         { x: "dx", y: "dy", fx, text: (d) => paramFmt(d.trace), dx: 7, dy: -8, textAnchor: "start", fill: ink, fontSize: 10 }) : null,
       Plot.dot(rows, { x: "dx", y: "dy", fx, r: 12, fillOpacity: 0, stroke: "none", tip: { format: { x: null, y: null, fx: null } },

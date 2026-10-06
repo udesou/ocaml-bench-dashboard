@@ -15,10 +15,7 @@ const cell = B.index(measurements);
 const benches = B.benchmarksOf(measurements);
 const configs = manifest.configs ?? [];
 const cmps = B.comparisons(manifest).filter((c) => !c.kind || c.kind === "inter");
-// Only dimensions that actually vary — a parameter with a single value has
-// nothing to sweep. Comparison axes (e.g. gc_plan, used to pick LXR/Bactrian)
-// are NOT sweep parameters, so exclude them: a plan comparison must not
-// masquerade as a parameter sweep.
+// Comparison axes (e.g. gc_plan) select a runtime, not a sweep; exclude them.
 const cmpDims = B.comparisonDims(cmps);
 const dims = B.varyingDims(configs).map((d) => d.dim).filter((d) => !cmpDims.includes(d));
 ```
@@ -31,8 +28,6 @@ display(dims.length === 0
 ```
 
 ```js
-// When nothing was swept there is nothing to choose — render no controls at all,
-// only the explanatory note above.
 const bench = dims.length ? view(Inputs.select(benches, { label: "Benchmark" })) : null;
 const metric = dims.length ? view(Inputs.select(B.ALL_METRICS.map((m) => m.name), { label: "Metric", value: "wall_time", format: B.metricLabel })) : null;
 const xDim = dims.length ? view(Inputs.select(dims, { label: "X dimension", value: dims[0] })) : null;
@@ -40,8 +35,7 @@ const yDim = dims.length ? view(Inputs.select(dims, { label: "Y dimension", valu
 ```
 
 ```js
-// If more than two parameters vary, pin the ones not on an axis to a fixed
-// value so each grid cell maps to a single config (no overplotting).
+// Pin the dimensions not on an axis so each grid cell maps to one config.
 const pins = dims.length ? view(B.dimPinsInput(configs, [xDim, yDim])) : {};
 ```
 
@@ -63,8 +57,7 @@ the variant is better.
 display((() => {
   if (dims.length === 0) return html``;
   const shown = B.filterByDims(configs, pins);
-  // The heatmap axes already show the swept params, and single-value params add
-  // nothing, so keep only the runtime identity in the labels.
+  // Labels keep only the runtime identity; axes and constant dims add nothing.
   const ex = [xDim, yDim, ...B.constantDims(shown)];
   const blocks = [];
   for (const cmp of cmps)

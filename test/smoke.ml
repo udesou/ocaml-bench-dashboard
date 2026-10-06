@@ -1,5 +1,4 @@
-(* Smoke test: build contract values, serialize, validate by re-parsing, and
-   show the wire shapes + a canonical config_id. Not a real test suite yet. *)
+(* Smoke test: round-trip contract values and print the wire shapes. *)
 open Schema
 
 let runtime : Contract.runtime =
@@ -32,12 +31,10 @@ let () =
     (Yojson.Safe.pretty_to_string (Contract.config_descriptor_to_yojson cfg));
   Printf.printf "== measurement ==\n%s\n\n"
     (Yojson.Safe.pretty_to_string (Contract.measurement_to_yojson m));
-  (* validate by re-parsing *)
   let round = Contract.measurement_of_yojson (Contract.measurement_to_yojson m) in
   (match round with
    | Ok _ -> print_endline "measurement round-trip: OK (valid)"
    | Error e -> Printf.printf "measurement round-trip: INVALID: %s\n" e);
-  (* a deliberately malformed record must be rejected loudly *)
   let bad = `Assoc [ ("run_id", `String "x") ] in
   (match Contract.measurement_of_yojson bad with
    | Ok _ -> print_endline "BUG: malformed record accepted"

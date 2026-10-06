@@ -1,13 +1,10 @@
-// Observable Framework configuration.
-// The site is a thin rendering layer: all data comes from the OCaml ingester
-// (bin/ingest) wired in as data loaders under src/data/; pages read the contract
-// and render with Observable Plot.
+// Observable Framework configuration; all data comes from the bin/ingest
+// loaders under src/data/.
 export default {
   root: "src",
   title: "OCaml Benchmark Dashboard",
-  // Page links keep their .html extension: the built site is served by plain
-  // static file servers (python http.server behind the bench webview), which
-  // do not resolve Observable's extensionless "clean" URLs.
+  // Plain static servers (python http.server behind the bench webview) cannot
+  // resolve Observable's extensionless URLs, so keep .html in page links.
   preserveExtension: true,
   pages: [
     { name: "Overview (regression)", path: "/index" },

@@ -1,13 +1,6 @@
 #!/bin/sh
-# Build the static site for a chosen benchmark run and package it as a
-# self-contained Docker image that serves it with nginx.
-#
+# Build the static site for $BENCH_RUN_DIR and package it as an nginx image:
 #   BENCH_RUN_DIR=~/running-ng/<a-run> sh scripts/package-image.sh [tag]
-#
-# `tag` defaults to the run directory's basename, so the image name records
-# which experiment it shows (e.g. ocaml-bench-dashboard:monolith-2026-05-25-...).
-# After it prints the image name, share it via a registry (docker push) or as a
-# file (docker save) — see README "Share the dashboard".
 set -e
 
 RUN_DIR="${BENCH_RUN_DIR:-$HOME/running-ng/gc-sweep-logs-pr14796/monolith-2026-05-25-Mon-102618}"

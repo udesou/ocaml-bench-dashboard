@@ -1,13 +1,6 @@
-(* Export the contract's canonical *vocabulary* from lib/schema/Registry as a
-   machine-readable vocab.json, so non-OCaml producers (running-ng) can generate
-   an emitter that speaks the exact same names, mappings, and config_id algorithm.
-
-   This is distinct from the JSON Schema (which describes structure): vocab.json
-   carries the *semantics* the schema deliberately leaves open — canonical metric
-   names/units/layers, the raw→canonical field maps, the modifier→dimension map,
-   and the config_id recipe.
-
-   Run: dune exec tools/gen_vocab.exe -- schema/json/vocab.json *)
+(* Export Registry as vocab.json (metric names/units/layers, raw->canonical maps,
+   modifier->dimension map, config_id recipe) so non-OCaml producers can emit
+   the same names. Run: dune exec tools/gen_vocab.exe -- schema/json/vocab.json *)
 
 module R = Schema.Registry
 module C = Schema.Contract

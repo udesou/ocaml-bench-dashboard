@@ -4,8 +4,6 @@
  (libraries yojson)
  (preprocess
   (pps ppx_deriving_yojson ppx_deriving_jsonschema))
- ; Relax name-clash / ambiguity warnings: a contract library deliberately reuses
- ; field labels (name, suite, config_id, …) across many record types, and
- ; ppx_deriving_yojson generates annotated code that resolves them safely.
+ ; Field labels are reused across record types; silence the ambiguity warnings.
  (flags
   (:standard -w -30-40-41-42-44)))
