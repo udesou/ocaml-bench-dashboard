@@ -1,7 +1,7 @@
 # ocaml-bench-dashboard
 
 A small pipeline and web dashboard for OCaml compiler/runtime benchmarks. It
-turns benchmark runs from [running-ng](https://github.com/udesou/running-ng) into
+turns benchmark runs from [running-ng](https://github.com/ocaml-bench/running-ng) into
 a browsable performance site: regression comparisons across compiler versions and
 GC configurations.
 
