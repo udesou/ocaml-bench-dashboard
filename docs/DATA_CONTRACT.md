@@ -133,6 +133,10 @@ sharing `(run_id, config_id, benchmark, invocation)`.
 }
 ```
 
+olly's `cpu_time` is the sum of each domain's lifetime, not CPU time used: an
+idle or blocked domain still counts, and `gc_overhead` (`gc_time / cpu_time`)
+inherits this. For a single-domain program it is close to `wall_time`.
+
 ### Run manifest `[output]` — `Contract.manifest`
 One per run: structured machine + `tool_versions`, the config descriptors that
 ran, the declared comparisons, and advisory `_produced_by`.
