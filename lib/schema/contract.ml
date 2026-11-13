@@ -176,6 +176,21 @@ type machine = {
 }
 [@@deriving yojson, jsonschema]
 
+(* What a benchmark binary was built from, read from its build stamp: one per
+   (benchmark, config) that ran. In a git repository, [source] (origin URL) and
+   [commit], and [dirty] (hash of uncommitted changes in the benchmark's
+   directory) when there are any; outside git, [content] (hash of its files). *)
+type build = {
+  benchmark : benchmark_ref;
+  config : config_ref;
+  runtime_build : string;            (* the runtime's opam root, or its compiler *)
+  source : string option; [@default None]
+  commit : string option; [@default None]
+  dirty : string option; [@default None]
+  content : string option; [@default None]
+}
+[@@deriving yojson, jsonschema]
+
 type manifest = {
   schema_version : string;  (* mandatory: always emitted, required on parse *)
   run_id : string;
@@ -185,6 +200,7 @@ type manifest = {
   configs : config_descriptor list; [@default []]
   comparisons : comparison list; [@default []]
   benchmarks : benchmark_ref list; [@default []]
+  builds : build list; [@default []]
   (* advisory provenance — how these artifacts were produced, e.g.
      "running-ng 1.3 (native)" or "adapter 0.1 (from legacy)". Lets a consumer
      tell natively-emitted data from adapted data. *)

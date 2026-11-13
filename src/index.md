@@ -27,6 +27,34 @@ const machineFields = [
   ["isolcpus", mach.isolcpus],
   ["Turbo", mach.turbo == null ? null : mach.turbo ? "on" : "off"],
 ].filter(([, v]) => v != null && v !== "");
+// What the benchmark binaries were built from (manifest.builds): per source repo,
+// its commit(s) with a count of programs, and how many carried uncommitted
+// changes; builds outside git are identified only by a hash of their files.
+function groupBy(xs, key) {
+  const m = new Map();
+  for (const x of xs) {
+    const k = key(x);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(x);
+  }
+  return m;
+}
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+function buildsSummary(builds) {
+  const programs = (bs) => new Set(bs.map((b) => `${b.benchmark.suite}/${b.benchmark.name}`)).size;
+  const bySource = groupBy(builds, (b) => b.source ?? null);
+  return [...bySource].map(([source, bs]) => {
+    if (source == null) return `local (not in git): ${plural(programs(bs), "program")}, by content hash`;
+    const name = source.replace(/\.git$/, "").split("/").pop();
+    const commits = [...groupBy(bs, (b) => b.commit)];
+    const at = commits.length === 1
+      ? `@ ${commits[0][0].slice(0, 7)}`
+      : commits.map(([c, cb]) => `@ ${c.slice(0, 7)} (${programs(cb)})`).join(", ");
+    const dirty = programs(bs.filter((b) => b.dirty));
+    return `${name} ${at}` + (dirty ? ` ⚠ ${plural(dirty, "program")} built with uncommitted changes` : "");
+  }).join(" · ") || null;
+}
+const benchmarksBuilt = buildsSummary(manifest.builds ?? []);
 const runMeta = [
   ["Run", manifest.run_id],
   ["Created", manifest.created_at],
@@ -43,6 +71,7 @@ display(html`<div class="grid grid-cols-2" style="gap:1rem;">
       <dt style="color:var(--theme-foreground-muted); white-space:nowrap;">Runtimes</dt>
       <dd style="margin:0;">${[...new Set(configs.map((c) => B.runtimeId(c)))].join(" · ")}</dd>
     </dl>
+    ${benchmarksBuilt ? html`<div style="margin:.15rem 0 0;"><div style="color:var(--theme-foreground-muted);">Benchmarks</div><div>${benchmarksBuilt}</div></div>` : ""}
   </div>
 </div>`);
 ```
