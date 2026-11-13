@@ -42,3 +42,41 @@ let () =
   (match Contract.measurement_of_yojson bad with
    | Ok _ -> print_endline "BUG: malformed record accepted"
    | Error e -> Printf.printf "malformed record rejected: %s\n" e)
+
+(* manifest.builds is optional: manifests from before it still parse *)
+let () =
+  let machine : Contract.machine =
+    match Contract.machine_of_yojson (`Assoc [ ("hostname", `String "monolith") ]) with
+    | Ok mach -> mach
+    | Error e -> failwith e
+  in
+  let build : Contract.build =
+    { benchmark = m.benchmark; config = m.config;
+      runtime_build = "ocaml-46e1c324fb9e-d9ed8b0aca1b";
+      source = Some "https://github.com/ocaml-bench/macro-benches";
+      commit = Some "b0a36fbba23a1368b8eb977f10445eea75f683e1";
+      dirty = None; content = None }
+  in
+  let man : Contract.manifest =
+    { schema_version = Contract.schema_version; run_id = m.run_id;
+      created_at = "2026-11-13T01:23:39Z"; machine; tool_versions = [];
+      configs = [ cfg ]; comparisons = []; benchmarks = [ m.benchmark ];
+      builds = [ build ]; produced_by = None }
+  in
+  let fail msg = prerr_endline msg; exit 1 in
+  Printf.printf "\n== manifest.builds ==\n%s\n"
+    (Yojson.Safe.pretty_to_string (Contract.build_to_yojson build));
+  (match Contract.manifest_of_yojson (Contract.manifest_to_yojson man) with
+   | Ok back when back.builds = [ build ] -> print_endline "manifest with builds: OK"
+   | Ok _ -> fail "manifest with builds: builds lost"
+   | Error e -> fail ("manifest with builds: INVALID: " ^ e));
+  let without = Contract.manifest_to_yojson { man with builds = [] } in
+  (match without with
+   | `Assoc l when List.mem_assoc "builds" l -> fail "empty builds serialized"
+   | _ -> ());
+  (match Contract.manifest_of_yojson without with
+   | Ok back when back.builds = [] -> print_endline "manifest without builds: OK"
+   | _ -> fail "manifest without builds rejected");
+  match Contract.build_of_yojson (`Assoc [ ("runtime_build", `String "x") ]) with
+  | Ok _ -> fail "BUG: build without benchmark/config accepted"
+  | Error e -> Printf.printf "malformed build rejected: %s\n" e

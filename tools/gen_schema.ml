@@ -11,7 +11,7 @@
 (* Fields that are optional on the wire everywhere they appear. *)
 let always_optional =
   [ "tags"; "options"; "tools"; "_modifiers"; "dimensions"; "raw_ref";
-    "configs"; "comparisons"; "benchmarks"; "tool_versions"; "args" ]
+    "configs"; "comparisons"; "benchmarks"; "tool_versions"; "args"; "builds" ]
 
 let rec fix_required (j : Yojson.Safe.t) : Yojson.Safe.t =
   match j with

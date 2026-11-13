@@ -139,7 +139,14 @@ inherits this. For a single-domain program it is close to `wall_time`.
 
 ### Run manifest `[output]` — `Contract.manifest`
 One per run: structured machine + `tool_versions`, the config descriptors that
-ran, the declared comparisons, and advisory `_produced_by`.
+ran, the declared comparisons, `builds`, and advisory `_produced_by`.
+
+`builds` (optional) records what each benchmark binary was built from, one entry
+per (benchmark, config) that ran: `runtime_build` (the runtime's opam root, or its
+compiler) and, in a git checkout, `source` (origin URL) and `commit`, with `dirty`
+(a hash of the uncommitted changes in the benchmark's directory) when there are
+any; outside git, `content` (a hash of the benchmark's files). Manifests from
+before it have none.
 
 ### Comparison declaration `[input→output]` — `Contract.comparison`
 Selects over the config space (matches configs by their fields), so a sweep — just
