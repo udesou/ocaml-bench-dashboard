@@ -82,7 +82,7 @@ same config is portable across runners:
 ```
 runtimes:  { name: {kind, version|commit|executable, options?, repo?} }
 suites:    { name: {type, timeout, programs:{p:{path,args,...}}} }
-modifiers: { name: {type, ...fields, excludes?} }
+modifiers: { name: {type, ...fields, excludes?, measurement_only?} }   # measurement_only => not in config_id
 benchmarks:{ suite: [program,...] }
 configs:   [ "runtime|mod|mod-val|..." ]     # the run set
 config_sweep?: { modifier: [value,...] }      # cross-products into configs
@@ -197,8 +197,8 @@ mechanism, and provisioning are out of scope — implementation freedom.
 1. `lib/schema/contract.ml`: add the canonical string to allowed `runtime.kind`. `version`/`options` are already explicit → usually no structural change.
 2. Then: running-ng adds a `Runtime` subclass emitting explicit kind/version/options; the adapter adds a name→kind case (legacy). `config_id` stays stable → no reader changes.
 
-### Add a modifier / wrapper (not a measurable axis)
-Usually nothing — pure-provenance modifiers surface in advisory `_modifiers`. If it carries a measurable axis, use the sweep-dimension recipe.
+### Add a modifier / wrapper
+A modifier is part of a config's identity by default, i.e., configs that differ in it get different `config_id`s. A modifier in `dimension_of_modifier` contributes its canonical dimension. Any other contributes a dimension under its own name, `name=value` for a `name-value` token and `name=true` for a flag. A modifier that only observes the run (counters, olly, memtrace, CPU pinning) declares `measurement_only: true` and stays out of identity, being presented only in advisory `_modifiers` (and not in the dashboard).
 
 ### Add a comparison kind or selector field
 1. `lib/schema/contract.ml`: extend `comparison` / document the new `kind`. Optional fields need no bump; structural changes do.
